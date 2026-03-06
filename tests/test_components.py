@@ -57,21 +57,11 @@ def test_detect_from_model_index(tmp_path):
     assert te is not None
 
 
-def test_detect_fallback_scan(tmp_path):
-    """Should fall back to directory scanning when no model_index.json."""
+def test_detect_no_model_index(tmp_path):
+    """Should raise when no model_index.json is found."""
     comp_dir = tmp_path / "transformer"
     comp_dir.mkdir()
     _make_fake_safetensor(comp_dir / "model.safetensors")
 
-    info = detect_components(tmp_path)
-    assert len(info.components) == 1
-    assert info.components[0].component_type == "transformer"
-
-
-def test_detect_single_component(tmp_path):
-    """Should detect single-component model (safetensors in root)."""
-    _make_fake_safetensor(tmp_path / "model.safetensors")
-
-    info = detect_components(tmp_path)
-    assert len(info.components) == 1
-    assert info.components[0].name == "model"
+    with pytest.raises(FileNotFoundError, match="model_index.json"):
+        detect_components(tmp_path)

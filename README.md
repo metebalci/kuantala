@@ -13,10 +13,10 @@ pip install kuantala[gguf,hub]
 
 # NVIDIA MXFP8/NVFP4
 # First install PyTorch with CUDA from https://pytorch.org
-pip install torch --index-url https://download.pytorch.org/whl/cu124
+pip install torch --index-url https://download.pytorch.org/whl/cu130
 pip install kuantala[nvidia]
 
-# Everything
+# Everything (hub, gguf, nvidia)
 pip install kuantala[all]
 ```
 
@@ -37,6 +37,53 @@ kuantala info Wan-AI/Wan2.1-I2V-14B
 # List available formats
 kuantala list-formats
 ```
+
+## CLI Reference
+
+### `kuantala quantize`
+
+```
+kuantala quantize [OPTIONS] MODEL
+```
+
+| Option | Description |
+|--------|-------------|
+| `MODEL` | HuggingFace model ID (e.g. `Wan-AI/Wan2.1-I2V-14B`) or local directory path (required) |
+| `-d, --dtype` | Target quantization type (required). GGUF: `Q2_K`, `Q3_K_S`, `Q3_K_M`, `Q3_K_L`, `Q4_0`, `Q4_K_S`, `Q4_K_M`, `Q5_0`, `Q5_K_S`, `Q5_K_M`, `Q6_K`, `Q8_0`. NVIDIA: `MXFP8`, `NVFP4` |
+| `-o, --output` | Output directory (default: `./output`) |
+| `--vae-dtype` | VAE quantization dtype (default: `skip`). Accepts any dtype above plus `F16`, `F32`, `BF16`, `skip` |
+| `--te-dtype` | Text encoder quantization dtype (default: same as `--dtype`). Same choices as `--vae-dtype` |
+| `--mixed-heuristics` | Preserve known-sensitive layers (norms, attention QKV, timestep embeddings) at higher precision |
+| `--mixed-statistics N` | Preserve top N% most sensitive layers by weight statistics |
+| `--mixed-calibration` | Use calibration forward passes to find sensitive layers (NVIDIA backend only) |
+| `--calibration-data PATH` | Path to calibration data directory |
+| `--keep TEXT` | Manual layer override: `pattern:dtype` (repeatable) |
+| `--hf-token TEXT` | HuggingFace auth token (optional, also uses token from `hf auth login` and `HF_TOKEN` env var) |
+
+### `kuantala info`
+
+```
+kuantala info [OPTIONS] MODEL
+```
+
+| Option | Description |
+|--------|-------------|
+| `MODEL` | HuggingFace model ID (e.g. `Wan-AI/Wan2.1-I2V-14B`) or local directory path (required) |
+| `--hf-token TEXT` | HuggingFace auth token (optional, also uses token from `hf auth login` and `HF_TOKEN` env var) |
+
+### `kuantala list-formats`
+
+```
+kuantala list-formats
+```
+
+Lists all available quantization formats with their backend and description.
+
+### Global Options
+
+| Option | Description |
+|--------|-------------|
+| `-v, --verbose` | Enable debug logging |
 
 ## Per-Component Control
 

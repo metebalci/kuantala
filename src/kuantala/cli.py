@@ -19,7 +19,7 @@ def cli(verbose: bool) -> None:
 
 
 @cli.command()
-@click.argument("model")
+@click.argument("model", metavar="MODEL_ID_OR_PATH")
 @click.option("--dtype", "-d", required=True, type=click.Choice(ALL_DTYPES, case_sensitive=True),
               help="Target quantization type.")
 @click.option("--output", "-o", type=click.Path(path_type=Path), default=Path("./output"),
@@ -27,7 +27,7 @@ def cli(verbose: bool) -> None:
 @click.option("--vae-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=True),
               default="skip", help="VAE quantization dtype (default: skip).")
 @click.option("--te-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=True),
-              default=None, help="Text encoder quantization dtype.")
+              default=None, help="Text encoder quantization dtype (default: same as --dtype).")
 @click.option("--mixed-heuristics", is_flag=True,
               help="Preserve known-sensitive layers at higher precision.")
 @click.option("--mixed-statistics", type=int, default=None, metavar="N",
@@ -38,8 +38,8 @@ def cli(verbose: bool) -> None:
               help="Path to calibration data directory.")
 @click.option("--keep", multiple=True,
               help="Manual layer override: 'pattern:dtype' (repeatable).")
-@click.option("--token", envvar="HF_TOKEN", default=None,
-              help="HuggingFace auth token.")
+@click.option("--hf-token", envvar="HF_TOKEN", default=None,
+              help="HuggingFace auth token (optional, also uses token from `hf auth login`).")
 def quantize(
     model: str,
     dtype: str,
@@ -51,11 +51,12 @@ def quantize(
     mixed_calibration: bool,
     calibration_data: Path | None,
     keep: tuple[str, ...],
-    token: str | None,
+    hf_token: str | None,
 ) -> None:
     """Quantize a diffusion model.
 
-    MODEL can be a HuggingFace model ID or a local path.
+    MODEL is a HuggingFace model ID (e.g. Wan-AI/Wan2.1-I2V-14B) or a local
+    directory path containing safetensors files.
     """
     from kuantala.core import quantize as run_quantize
 
@@ -70,7 +71,7 @@ def quantize(
         mixed_calibration=mixed_calibration,
         calibration_data=calibration_data,
         keep=list(keep),
-        hf_token=token,
+        hf_token=hf_token,
     )
 
     output_files = run_quantize(config)
@@ -86,14 +87,19 @@ def quantize(
 
 
 @cli.command()
-@click.argument("model")
-@click.option("--token", envvar="HF_TOKEN", default=None)
-def info(model: str, token: str | None) -> None:
-    """Inspect a diffusion model's components."""
+@click.argument("model", metavar="MODEL_ID_OR_PATH")
+@click.option("--hf-token", envvar="HF_TOKEN", default=None,
+              help="HuggingFace auth token (optional, also uses token from `hf auth login`).")
+def info(model: str, hf_token: str | None) -> None:
+    """Inspect a diffusion model's components.
+
+    MODEL is a HuggingFace model ID (e.g. Wan-AI/Wan2.1-I2V-14B) or a local
+    directory path containing safetensors files.
+    """
     from kuantala.components import detect_components
     from kuantala.model_loader import resolve_model_path
 
-    model_dir = resolve_model_path(model, token)
+    model_dir = resolve_model_path(model, hf_token)
     model_info = detect_components(model_dir)
 
     console.print(f"\n[bold]Model:[/] {model}")

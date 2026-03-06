@@ -67,16 +67,15 @@ def _has_safetensors(path: Path) -> bool:
 def detect_components(model_dir: Path) -> ModelInfo:
     """Detect components from a diffusion model directory.
 
-    Looks for model_index.json first (standard diffusers layout),
-    then falls back to directory scanning.
+    Requires model_index.json (standard HuggingFace diffusers layout).
     """
     index_path = model_dir / "model_index.json"
-    if index_path.exists():
-        return _parse_model_index(model_dir, index_path)
-    return _scan_directory(model_dir)
+    if not index_path.exists():
+        raise FileNotFoundError(
+            f"No model_index.json found in {model_dir}. "
+            "The model directory must follow the HuggingFace diffusers layout."
+        )
 
-
-def _parse_model_index(model_dir: Path, index_path: Path) -> ModelInfo:
     with open(index_path) as f:
         index = json.load(f)
 
@@ -105,30 +104,3 @@ def _parse_model_index(model_dir: Path, index_path: Path) -> ModelInfo:
         model_type or "unknown",
     )
     return ModelInfo(root=model_dir, components=components, model_type=model_type)
-
-
-def _scan_directory(model_dir: Path) -> ModelInfo:
-    """Fallback: scan subdirectories for safetensors files."""
-    components: list[ModelComponent] = []
-
-    # Check if safetensors are in root (single-component model)
-    if _has_safetensors(model_dir):
-        components.append(ModelComponent(
-            name="model",
-            path=model_dir,
-            component_type="transformer",
-        ))
-        log.info("Single-component model detected at %s", model_dir)
-        return ModelInfo(root=model_dir, components=components)
-
-    for subdir in sorted(model_dir.iterdir()):
-        if subdir.is_dir() and _has_safetensors(subdir):
-            comp_type = _classify_component(subdir.name)
-            components.append(ModelComponent(
-                name=subdir.name,
-                path=subdir,
-                component_type=comp_type,
-            ))
-
-    log.info("Directory scan found %d components", len(components))
-    return ModelInfo(root=model_dir, components=components)

@@ -18,7 +18,7 @@ def _check_dependencies() -> None:
     except ImportError:
         raise ImportError(
             "PyTorch not installed. Install a CUDA build from https://pytorch.org, e.g.:\n"
-            "  pip install torch --index-url https://download.pytorch.org/whl/cu124"
+            "  pip install torch --index-url https://download.pytorch.org/whl/cu130"
         )
     if not torch.cuda.is_available():
         raise RuntimeError(
