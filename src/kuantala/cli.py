@@ -415,6 +415,40 @@ def _print_module_tree(module: object, prefix: str) -> None:
 
 
 @cli.command()
+@click.argument("input_file", metavar="INPUT", type=click.Path(exists=True, path_type=Path))
+@click.option("--output", "-o", type=click.Path(path_type=Path), default=None,
+              help="Output file path (default: input stem + '-comfyui.safetensors').")
+def convert(input_file: Path, output: Path | None) -> None:
+    """Convert a kuantala NVFP4 safetensors file to ComfyUI format."""
+    if input_file.suffix != ".safetensors":
+        raise click.ClickException(f"Input must be a .safetensors file, got: {input_file.suffix}")
+
+    if output is None:
+        output = input_file.parent / f"{input_file.stem}-comfyui.safetensors"
+
+    from kuantala.convert import convert_to_comfyui
+
+    console.print(f"[bold]Input:[/]  {input_file}")
+    console.print(f"[bold]Output:[/] {output}")
+
+    # Count quantized layers for summary
+    from safetensors.torch import load_file
+    state_dict = load_file(str(input_file))
+    n_layers = sum(1 for k in state_dict if k.endswith(".weight_quantizer._scale"))
+
+    if n_layers == 0:
+        raise click.ClickException("No NVFP4-quantized layers found in input file.")
+
+    convert_to_comfyui(input_file, output)
+
+    input_mb = input_file.stat().st_size / (1024 * 1024)
+    output_mb = output.stat().st_size / (1024 * 1024)
+    console.print(f"\n[bold green]Converted {n_layers} layers[/]")
+    console.print(f"  Input:  {input_mb:.1f} MB")
+    console.print(f"  Output: {output_mb:.1f} MB")
+
+
+@cli.command()
 @click.argument("file", metavar="FILE_PATH", type=click.Path(exists=True, path_type=Path))
 def tensors(file: Path) -> None:
     """Show tensors in a safetensors file.

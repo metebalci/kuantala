@@ -54,6 +54,31 @@ Kuantala uses NVIDIA modelopt to quantize diffusion model components:
 
 The output files are genuinely smaller and load into VRAM at low precision. FP8 uses `float8_e4m3fn` tensors, NVFP4 uses packed `uint8` with block-wise FP8 scales.
 
+## ComfyUI Conversion
+
+Kuantala's NVFP4 output uses modelopt's internal format. To use NVFP4 models in ComfyUI, convert them first:
+
+```bash
+kuantala convert ./output/transformer-NVFP4.safetensors
+# Creates ./output/transformer-NVFP4-comfyui.safetensors
+
+# Custom output path
+kuantala convert ./output/transformer-NVFP4.safetensors -o ./comfy-model.safetensors
+```
+
+The conversion performs:
+- **Nibble swap** — reorders packed FP4 byte layout to match ComfyUI expectations
+- **Scale tiling** — converts block scales from plain to cuBLAS tiled layout
+- **Key renaming** — translates modelopt tensor names to ComfyUI conventions
+- **Metadata injection** — adds `.comfy_quant` entries required by ComfyUI
+
+Full workflow:
+```bash
+kuantala quantize Wan-AI/Wan2.1-I2V-14B-Diffusers --dtype NVFP4 --output ./wan-nvfp4
+kuantala convert ./wan-nvfp4/transformer-NVFP4.safetensors
+# Load transformer-NVFP4-comfyui.safetensors in ComfyUI
+```
+
 ## CLI Reference
 
 ### `kuantala quantize`
@@ -97,6 +122,17 @@ kuantala config MODEL
 ```
 
 Shows model architecture from config: full module hierarchy with layer types, shapes, and parameter counts. Only downloads `config.json` files — no model weights are downloaded.
+
+### `kuantala convert`
+
+```
+kuantala convert [OPTIONS] INPUT
+```
+
+| Option | Description |
+|--------|-------------|
+| `INPUT` | Path to a modelopt NVFP4 `.safetensors` file (required) |
+| `-o, --output` | Output file path (default: `{input_stem}-comfyui.safetensors`) |
 
 ### `kuantala tensors`
 
