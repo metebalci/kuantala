@@ -68,7 +68,7 @@ kuantala quantize [OPTIONS] MODEL
 | `--te-dtype` | Text encoder quantization dtype (default: same as `--dtype`). Same choices as `--vae-dtype` |
 | `--ie-dtype` | Image encoder quantization dtype (default: same as `--dtype`). Same choices as `--vae-dtype` |
 | `--no-heuristics` | Disable heuristic-based mixed precision (on by default) |
-| `--mixed-statistics N` | Preserve top N% most sensitive layers by weight statistics |
+| `--statistics LEVEL` | Preserve statistically sensitive layers: `low`, `medium`, or `high` (off by default) |
 | `--no-calibration` | Disable calibration forward passes (on by default for NVIDIA backend) |
 | `--calibration-data PATH` | Path to calibration data directory |
 | `--keep TEXT` | Manual layer override: `pattern:dtype` (repeatable) |
@@ -146,16 +146,44 @@ kuantala quantize black-forest-labs/FLUX.1-dev \
 
 ## Mixed Quantization
 
-By default, kuantala uses **heuristic-based mixed precision** (preserves known-sensitive layers like norms, attention QKV, timestep embeddings at higher precision) and **calibration** (runs random data through the model to find optimal quantization scale factors, NVIDIA backend only).
+Kuantala supports three methods for mixed-precision quantization, which can be combined. When multiple methods are active, a layer is preserved at higher precision if *any* method flags it. Manual `--keep` rules always take highest priority.
+
+### Heuristics (on by default)
+
+Preserves known-sensitive layer types at F16 based on diffusion model research: normalization layers, attention QKV projections, timestep embeddings, and input/output projections. These layers are small but disproportionately affect output quality.
+
+Disable with `--no-heuristics`.
+
+### Statistics (off by default)
+
+Analyzes the actual weight values in each layer to find statistical outliers — layers with unusually high outlier ratios (many weights far from the mean) are most harmed by quantization and get preserved at F16.
+
+The sensitivity level controls the threshold:
+
+| Level | Threshold | Effect |
+|-------|-----------|--------|
+| `low` | > 2.5 std devs | Only extreme outliers, fewest layers preserved |
+| `medium` | > 2.0 std devs | Clear outliers |
+| `high` | > 1.5 std devs | Moderate outliers, most layers preserved |
+
+Enable with `--statistics medium` (or `low`/`high`).
+
+### Calibration (on by default, NVIDIA backend only)
+
+Runs forward passes with random data through the model so that quantizers can observe actual activation ranges and set optimal scale factors. This doesn't decide *which* layers to preserve — it improves *how* the quantized layers are scaled.
+
+Not applicable to GGUF (which is weight-only quantization with scales computed directly from weight values). Disable with `--no-calibration`.
+
+### Examples
 
 ```bash
-# Default: heuristics + calibration enabled
+# Default: heuristics + calibration (NVIDIA) enabled
 kuantala quantize model --dtype MXFP8
 
-# Also preserve top N% layers with highest outlier ratios
-kuantala quantize model --dtype Q4_K --mixed-statistics 10
+# Add statistics-based layer preservation
+kuantala quantize model --dtype Q4_K --statistics medium
 
-# Disable heuristics or calibration if needed
+# Disable defaults if needed
 kuantala quantize model --dtype Q4_K --no-heuristics
 kuantala quantize model --dtype MXFP8 --no-calibration
 
@@ -163,8 +191,6 @@ kuantala quantize model --dtype MXFP8 --no-calibration
 kuantala quantize model --dtype Q4_K \
     --keep "norm_*:F16" --keep "attn_*:Q8_0"
 ```
-
-When multiple methods are active, a layer is preserved if *any* method flags it. Manual `--keep` rules always take highest priority.
 
 ## Python API
 
@@ -178,7 +204,7 @@ config = QuantConfig(
     vae_dtype="skip",
     output_dir=Path("./output"),
     # heuristics=True and calibration=True by default
-    mixed_statistics=10,
+    statistics="medium",
     keep=["norm_*:F16"],
 )
 output_files = quantize(config)

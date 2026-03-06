@@ -32,8 +32,8 @@ def cli(verbose: bool) -> None:
               default=None, help="Image encoder quantization dtype (default: same as --dtype).")
 @click.option("--no-heuristics", is_flag=True,
               help="Disable heuristic-based mixed precision (on by default).")
-@click.option("--mixed-statistics", type=int, default=None, metavar="N",
-              help="Preserve top N%% most sensitive layers (by weight statistics).")
+@click.option("--statistics", type=click.Choice(["low", "medium", "high"], case_sensitive=False),
+              default=None, help="Preserve statistically sensitive layers (low/medium/high).")
 @click.option("--no-calibration", is_flag=True,
               help="Disable calibration forward passes (on by default for NVIDIA backend).")
 @click.option("--calibration-data", type=click.Path(exists=True, path_type=Path), default=None,
@@ -50,7 +50,7 @@ def quantize(
     te_dtype: str | None,
     ie_dtype: str,
     no_heuristics: bool,
-    mixed_statistics: int | None,
+    statistics: str | None,
     no_calibration: bool,
     calibration_data: Path | None,
     keep: tuple[str, ...],
@@ -80,7 +80,7 @@ def quantize(
         te_dtype=te_dtype,
         ie_dtype=ie_dtype,
         heuristics=not no_heuristics,
-        mixed_statistics=mixed_statistics,
+        statistics=statistics.lower() if statistics else None,
         calibration=not no_calibration,
         calibration_data=calibration_data,
         keep=list(keep),

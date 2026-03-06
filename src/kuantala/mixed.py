@@ -56,15 +56,33 @@ def compute_heuristic_overrides(tensor_names: list[str]) -> dict[str, str]:
     return overrides
 
 
+# Standard deviation thresholds for each sensitivity level.
+# A layer is preserved if its outlier score is more than N std devs above the mean score.
+_STATISTICS_THRESHOLDS = {
+    "low": 2.5,    # only extreme outliers
+    "medium": 2.0,  # clear outliers
+    "high": 1.5,   # moderate outliers
+}
+
+
 def compute_statistics_overrides(
     safetensor_files: list[Path],
-    percentage: int = 10,
+    level: str = "medium",
 ) -> dict[str, str]:
     """Analyze weight statistics to find the most sensitive layers.
 
-    Layers with high outlier ratios or large dynamic ranges are most harmed
-    by quantization. The top `percentage`% are preserved at F16.
+    Each layer gets a sensitivity score based on its outlier ratio (fraction of
+    weights more than 3 standard deviations from the layer mean). Layers whose
+    score is significantly above the average score are preserved at F16.
+
+    The level controls sensitivity:
+    - "low": only extreme outliers (> 2.5 std devs above mean score)
+    - "medium": clear outliers (> 2.0 std devs)
+    - "high": moderate outliers (> 1.5 std devs)
     """
+    if level not in _STATISTICS_THRESHOLDS:
+        raise ValueError(f"Unknown statistics level {level!r}. Choose from: low, medium, high")
+
     scores: dict[str, float] = {}
 
     for sf_path in safetensor_files:
@@ -95,15 +113,21 @@ def compute_statistics_overrides(
     if not scores:
         return {}
 
-    # Find threshold for top N%
-    sorted_scores = sorted(scores.values(), reverse=True)
-    cutoff_idx = max(1, int(len(sorted_scores) * percentage / 100))
-    threshold = sorted_scores[min(cutoff_idx, len(sorted_scores) - 1)]
+    # Find outlier layers using standard deviation of the scores themselves
+    all_scores = np.array(list(scores.values()))
+    score_mean = np.mean(all_scores)
+    score_std = np.std(all_scores)
+
+    if score_std == 0:
+        return {}
+
+    threshold_std = _STATISTICS_THRESHOLDS[level]
+    threshold = score_mean + threshold_std * score_std
 
     overrides = {name: "F16" for name, score in scores.items() if score >= threshold}
     log.info(
-        "Statistics: preserving %d/%d layers (top %d%%) at F16",
-        len(overrides), len(scores), percentage,
+        "Statistics (%s): preserving %d/%d layers at F16 (threshold=%.2f)",
+        level, len(overrides), len(scores), threshold,
     )
     return overrides
 
@@ -159,9 +183,9 @@ def compute_layer_overrides(
         overrides.update(compute_heuristic_overrides(tensor_names))
 
     # Layer 2: Statistics
-    if config.mixed_statistics is not None:
+    if config.statistics is not None:
         stat_overrides = compute_statistics_overrides(
-            safetensor_files, config.mixed_statistics
+            safetensor_files, config.statistics
         )
         overrides.update(stat_overrides)
 

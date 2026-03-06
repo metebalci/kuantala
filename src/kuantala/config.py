@@ -44,7 +44,7 @@ class QuantConfig:
 
     # Mixed quantization (heuristics and calibration on by default)
     heuristics: bool = True
-    mixed_statistics: int | None = None  # percentage, e.g. 10 = top 10%
+    statistics: str | None = None  # "low", "medium", "high", or None (off)
     calibration: bool = True  # only effective for NVIDIA backend
     calibration_data: Path | None = None
 
