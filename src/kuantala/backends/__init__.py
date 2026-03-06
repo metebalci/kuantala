@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
+from kuantala.components import ModelComponent
 from kuantala.config import QuantConfig
 
 
@@ -20,6 +21,7 @@ class QuantBackend(ABC):
         dtype: str,
         config: QuantConfig,
         layer_overrides: dict[str, str] | None = None,
+        component: ModelComponent | None = None,
     ) -> Path:
         """Quantize a single model component.
 
@@ -29,6 +31,7 @@ class QuantBackend(ABC):
             dtype: Target quantization type (e.g. "Q4_K", "MXFP8").
             config: Full quantization config.
             layer_overrides: Per-layer dtype overrides {layer_name: dtype}.
+            component: Model component info (library, class_name).
 
         Returns:
             Path to the output file.

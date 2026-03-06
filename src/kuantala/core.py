@@ -76,6 +76,7 @@ def quantize(config: QuantConfig) -> list[Path]:
             dtype=dtype,
             config=config,
             layer_overrides=layer_overrides if layer_overrides else None,
+            component=component,
         )
         output_files.append(output_file)
 

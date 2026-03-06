@@ -64,7 +64,10 @@ class NvidiaBackend(QuantBackend):
         dtype: str,
         config: QuantConfig,
         layer_overrides: dict[str, str] | None = None,
+        component: Any = None,
     ) -> Path:
+        import importlib
+
         import torch
         import modelopt.torch.quantization as mtq
         from safetensors.torch import save_file
@@ -72,51 +75,62 @@ class NvidiaBackend(QuantBackend):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_file = output_path.with_suffix(".safetensors")
 
-        # Load model weights
+        # Load model as its actual class (Linear/Conv layers needed for modelopt)
         log.info("Loading model from %s", component_path)
+        model = None
+        if component and component.library and component.class_name:
+            try:
+                lib = importlib.import_module(component.library)
+                cls = getattr(lib, component.class_name)
+                model = cls.from_pretrained(str(component_path), torch_dtype=torch.float16)
+                model = model.cuda()
+                log.info("Loaded %s.%s", component.library, component.class_name)
+            except Exception as e:
+                log.warning(
+                    "Could not load %s.%s: %s. Falling back to state_dict.",
+                    component.library, component.class_name, e,
+                )
+                model = None
 
-        state_dict = {}
-        for sf_path in sorted(component_path.glob("*.safetensors")):
-            from safetensors.torch import load_file
-            state_dict.update(load_file(str(sf_path)))
+        if model is None:
+            # Fallback: build module hierarchy from state_dict
+            log.info("Loading as raw state_dict (modelopt may not find quantizable layers)")
+            state_dict = {}
+            for sf_path in sorted(component_path.glob("*.safetensors")):
+                from safetensors.torch import load_file
+                state_dict.update(load_file(str(sf_path)))
 
-        # Build a nested module hierarchy from dotted parameter names
-        model = torch.nn.Module()
-        for name, tensor in state_dict.items():
-            parts = name.split(".")
-            # Create intermediate submodules as needed
-            parent = model
-            for part in parts[:-1]:
-                if not hasattr(parent, part):
-                    child = torch.nn.Module()
-                    parent.add_module(part, child)
-                parent = getattr(parent, part)
-            param = torch.nn.Parameter(tensor.cuda(), requires_grad=False)
-            parent.register_parameter(parts[-1], param)
+            model = torch.nn.Module()
+            for name, tensor in state_dict.items():
+                parts = name.split(".")
+                parent = model
+                for part in parts[:-1]:
+                    if not hasattr(parent, part):
+                        parent.add_module(part, torch.nn.Module())
+                    parent = getattr(parent, part)
+                param = torch.nn.Parameter(tensor.cuda(), requires_grad=False)
+                parent.register_parameter(parts[-1], param)
 
         # Apply quantization
         quant_cfg = _get_quant_config(dtype)
         log.info("Applying %s quantization via nvidia-modelopt...", dtype)
 
         if config.mixed_calibration:
-            # Calibration mode: use forward passes
-            def calibrate_fn(model):
+            def calibrate_fn(m):
                 log.info("Running calibration forward passes...")
-                # Generate random inputs for calibration
-                for _ in range(8):
-                    with torch.no_grad():
-                        for name, param in model.named_parameters():
-                            _ = param * 1.0  # Simple calibration pass
+                with torch.no_grad():
+                    for _ in range(8):
+                        for p in m.parameters():
+                            _ = p * 1.0
 
             mtq.quantize(model, quant_cfg, forward_loop=calibrate_fn)
         else:
-            # Direct quantization without calibration
             mtq.quantize(model, quant_cfg, forward_loop=lambda m: None)
 
         # Extract quantized state dict
-        quantized_state_dict = {}
-        for name, param in model.named_parameters():
-            quantized_state_dict[name] = param.cpu()
+        quantized_state_dict = {
+            name: param.cpu() for name, param in model.named_parameters()
+        }
 
         save_file(quantized_state_dict, str(output_file))
 

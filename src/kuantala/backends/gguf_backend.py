@@ -249,6 +249,7 @@ class GGUFBackend(QuantBackend):
         dtype: str,
         config: QuantConfig,
         layer_overrides: dict[str, str] | None = None,
+        component: Any = None,
     ) -> Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_file = output_path.with_suffix(".gguf")

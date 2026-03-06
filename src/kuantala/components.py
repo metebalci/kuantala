@@ -18,6 +18,8 @@ class ModelComponent:
     name: str  # e.g. "transformer", "vae", "text_encoder"
     path: Path  # directory containing safetensors
     component_type: str  # "transformer", "unet", "vae", "text_encoder", "scheduler", "other"
+    library: str | None = None  # e.g. "diffusers", "transformers"
+    class_name: str | None = None  # e.g. "AutoencoderKL", "CLIPTextModel"
 
 
 @dataclass
@@ -91,10 +93,15 @@ def detect_components(model_dir: Path) -> ModelInfo:
         comp_dir = model_dir / key
         if comp_dir.is_dir() and _has_safetensors(comp_dir):
             comp_type = _classify_component(key)
+            # value is [library, class_name]
+            library = value[0] if isinstance(value, list) and len(value) >= 1 else None
+            class_name = value[1] if isinstance(value, list) and len(value) >= 2 else None
             components.append(ModelComponent(
                 name=key,
                 path=comp_dir,
                 component_type=comp_type,
+                library=library,
+                class_name=class_name,
             ))
             log.debug("Found component: %s (%s) at %s", key, comp_type, comp_dir)
 
