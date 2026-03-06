@@ -20,13 +20,13 @@ def cli(verbose: bool) -> None:
 
 @cli.command()
 @click.argument("model", metavar="MODEL_ID_OR_PATH")
-@click.option("--dtype", "-d", required=True, type=click.Choice(ALL_DTYPES, case_sensitive=True),
+@click.option("--dtype", "-d", required=True, type=click.Choice(ALL_DTYPES, case_sensitive=False),
               help="Target quantization type.")
 @click.option("--output", "-o", type=click.Path(path_type=Path), default=Path("./output"),
               help="Output directory.")
-@click.option("--vae-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=True),
+@click.option("--vae-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=False),
               default="skip", help="VAE quantization dtype (default: skip).")
-@click.option("--te-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=True),
+@click.option("--te-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=False),
               default=None, help="Text encoder quantization dtype (default: same as --dtype).")
 @click.option("--mixed-heuristics", is_flag=True,
               help="Preserve known-sensitive layers at higher precision.")
@@ -59,6 +59,13 @@ def quantize(
     directory path containing safetensors files.
     """
     from kuantala.core import quantize as run_quantize
+
+    # Normalize case (Click case_sensitive=False passes through original case)
+    dtype = dtype.upper()
+    if vae_dtype and vae_dtype.lower() != "skip":
+        vae_dtype = vae_dtype.upper()
+    if te_dtype:
+        te_dtype = te_dtype.upper()
 
     config = QuantConfig(
         model_source=model,
