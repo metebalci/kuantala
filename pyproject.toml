@@ -17,7 +17,9 @@ dependencies = [
 [project.optional-dependencies]
 hub = ["huggingface-hub"]
 gguf = ["gguf", "numpy"]
-nvidia = ["diffusers", "accelerate", "nvidia-modelopt[hf]"]
+# nvidia-modelopt is pinned because each version requires a specific transformers range.
+# When updating modelopt, check its [hf] extra for the compatible transformers version.
+nvidia = ["diffusers", "accelerate", "transformers>=4.53,<5.0", "nvidia-modelopt==0.41.0"]
 all = ["kuantala[hub,gguf,nvidia]"]
 dev = ["pytest", "build", "twine", "kuantala[all]"]
 
