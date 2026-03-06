@@ -282,15 +282,15 @@ def list_formats() -> None:
     table.add_column("Description")
 
     descriptions = {
-        "Q2_K": "2-bit K-quant (very aggressive, quality loss)",
-        "Q3_K": "3-bit K-quant",
+        "Q2_K": "2-bit K-means quantization",
+        "Q3_K": "3-bit K-means quantization",
         "Q4_0": "4-bit basic quantization",
-        "Q4_K": "4-bit K-quant (recommended)",
+        "Q4_K": "4-bit K-means quantization",
         "Q5_0": "5-bit basic quantization",
-        "Q5_K": "5-bit K-quant",
-        "Q6_K": "6-bit K-quant (high quality)",
-        "Q8_0": "8-bit quantization (near lossless)",
-        "MXFP8": "Microscaling FP8 (NVIDIA, requires Hopper+)",
+        "Q5_K": "5-bit K-means quantization",
+        "Q6_K": "6-bit K-means quantization",
+        "Q8_0": "8-bit basic quantization",
+        "MXFP8": "Microscaling FP8 (requires Hopper+)",
         "NVFP4": "NVIDIA FP4 (requires Blackwell)",
     }
 

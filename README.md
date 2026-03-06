@@ -159,21 +159,21 @@ output_files = quantize(config)
 
 | Format | Description |
 |--------|-------------|
-| Q2_K   | 2-bit K-quant (very aggressive) |
-| Q3_K   | 3-bit K-quant |
-| Q4_0   | 4-bit basic |
-| Q4_K   | 4-bit K-quant (recommended) |
-| Q5_0   | 5-bit basic |
-| Q5_K   | 5-bit K-quant |
-| Q6_K   | 6-bit K-quant |
-| Q8_0   | 8-bit (near lossless) |
+| Q2_K   | 2-bit K-means quantization |
+| Q3_K   | 3-bit K-means quantization |
+| Q4_0   | 4-bit basic quantization |
+| Q4_K   | 4-bit K-means quantization |
+| Q5_0   | 5-bit basic quantization |
+| Q5_K   | 5-bit K-means quantization |
+| Q6_K   | 6-bit K-means quantization |
+| Q8_0   | 8-bit basic quantization |
 
 ### NVIDIA (requires torch + nvidia-modelopt)
 
 | Format | Description |
 |--------|-------------|
-| MXFP8  | Microscaling FP8 (Hopper+) |
-| NVFP4  | NVIDIA FP4 (Blackwell) |
+| MXFP8  | Microscaling FP8 (requires Hopper+) |
+| NVFP4  | NVIDIA FP4 (requires Blackwell) |
 
 ## Development
 
