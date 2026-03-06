@@ -60,6 +60,20 @@ def test_components_cli(model_dir):
 
 
 @requires_hub
+def test_config_cli(model_dir):
+    """Verify config CLI command on a real model."""
+    pytest.importorskip("torch")
+    from click.testing import CliRunner
+    from kuantala.cli import cli
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["config", str(model_dir)])
+    assert result.exit_code == 0
+    assert "StableDiffusionPipeline" in result.output
+    assert "unet" in result.output
+
+
+@requires_hub
 def test_tensors_safetensors(model_dir):
     """Verify layers CLI command on a safetensors file."""
     from click.testing import CliRunner

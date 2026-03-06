@@ -315,6 +315,152 @@ def list_formats() -> None:
 
 
 @cli.command()
+@click.argument("model", metavar="MODEL_ID_OR_PATH")
+@click.option("--hf-token", envvar="HF_TOKEN", default=None,
+              help="HuggingFace auth token (optional, also uses token from `hf auth login`).")
+def config(model: str, hf_token: str | None) -> None:
+    """Show the architecture of a diffusion model from its config.
+
+    Loads model configs (no weights) to show the full module hierarchy.
+    Requires torch and diffusers/transformers to be installed.
+
+    MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.1-I2V-14B-Diffusers)
+    or a local directory path in diffusers format (with model_index.json).
+    """
+    import importlib
+    import json as _json
+
+    try:
+        import torch  # noqa: F401
+    except ImportError:
+        raise click.ClickException(
+            "The inspect command requires PyTorch. "
+            "Install with: pip install torch"
+        )
+
+    local = Path(model)
+    is_local = local.is_dir()
+
+    if is_local:
+        model_dir = local
+        index_path = model_dir / "model_index.json"
+        if not index_path.exists():
+            raise click.ClickException(
+                f"No model_index.json found in {model_dir}. "
+                "The model directory must follow the HuggingFace diffusers layout."
+            )
+    else:
+        try:
+            from huggingface_hub import hf_hub_download
+        except ImportError:
+            raise click.ClickException(
+                f"'{model}' is not a local directory and huggingface-hub is not installed. "
+                "Install with: pip install kuantala[hub]"
+            )
+        try:
+            index_path = Path(hf_hub_download(repo_id=model, filename="model_index.json", token=hf_token))
+        except Exception:
+            raise click.ClickException(
+                f"'{model}' does not contain a model_index.json on HuggingFace Hub. "
+                "Kuantala requires a diffusers-format model."
+            )
+        model_dir = index_path.parent
+
+    with open(index_path) as f:
+        index = _json.load(f)
+
+    model_type = index.get("_class_name")
+    console.print(f"\n[bold]Model:[/] {model}")
+    if model_type:
+        console.print(f"[bold]Pipeline:[/] {model_type}")
+
+    from kuantala.components import _classify_component
+
+    _quantizable_types = {"transformer", "unet", "vae", "text_encoder", "image_encoder"}
+
+    for key, value in index.items():
+        if key.startswith("_") or value is None or not isinstance(value, list):
+            continue
+        library = value[0] if len(value) >= 1 else None
+        class_name = value[1] if len(value) >= 2 else None
+        if library is None and class_name is None:
+            continue
+        comp_type = _classify_component(key, class_name, library)
+        if comp_type not in _quantizable_types:
+            continue
+
+        # Download config.json for this component if remote
+        config_path = model_dir / key / "config.json"
+        if not config_path.exists() and not is_local:
+            try:
+                from huggingface_hub import hf_hub_download
+                config_path = Path(hf_hub_download(
+                    repo_id=model, filename=f"{key}/config.json", token=hf_token
+                ))
+            except Exception:
+                console.print(f"\n[yellow]Could not fetch config for {key}[/]")
+                continue
+
+        if not config_path.exists():
+            continue
+
+        # Instantiate model from config (no weights)
+        full_class = f"{library}.{class_name}"
+        try:
+            lib = importlib.import_module(library)
+            cls = getattr(lib, class_name)
+            model_instance = cls.from_config(str(config_path.parent))
+        except Exception as e:
+            console.print(f"\n[yellow]Could not load {full_class} for '{key}': {e}[/]")
+            continue
+
+        # Count parameters
+        total_params = sum(p.numel() for p in model_instance.parameters())
+
+        console.print(f"\n[bold cyan]{key}[/] [dim]({full_class}, {_format_params(total_params)} params)[/]")
+
+        # Print module tree
+        _print_module_tree(model_instance, prefix="")
+
+
+def _print_module_tree(module: object, prefix: str, max_depth: int = 4, _depth: int = 0) -> None:
+    """Print a module hierarchy as a tree."""
+    import torch.nn as nn
+
+    children = list(module.named_children()) if isinstance(module, nn.Module) else []
+    if not children:
+        return
+
+    for i, (name, child) in enumerate(children):
+        is_last = i == len(children) - 1
+        connector = "\u2514\u2500 " if is_last else "\u251c\u2500 "
+        child_prefix = prefix + ("   " if is_last else "\u2502  ")
+
+        # Summarize this module
+        child_type = type(child).__name__
+        param_count = sum(p.numel() for p in child.parameters())
+        param_str = f" ({_format_params(param_count)})" if param_count > 0 else ""
+
+        # For leaf-like modules (Linear, Conv, Norm), show shape info
+        extra = ""
+        if isinstance(child, nn.Linear):
+            extra = f" in={child.in_features}, out={child.out_features}"
+        elif isinstance(child, (nn.Conv1d, nn.Conv2d, nn.Conv3d)):
+            extra = f" in={child.in_channels}, out={child.out_channels}, k={child.kernel_size}"
+        elif isinstance(child, (nn.LayerNorm, nn.GroupNorm)):
+            extra = f" {list(child.normalized_shape)}" if hasattr(child, 'normalized_shape') else ""
+
+        console.print(f"{prefix}{connector}[cyan]{name}[/] [dim]{child_type}{extra}{param_str}[/]")
+
+        # Recurse if not too deep and has children
+        grandchildren = list(child.named_children())
+        if grandchildren and _depth < max_depth:
+            _print_module_tree(child, child_prefix, max_depth, _depth + 1)
+        elif grandchildren:
+            console.print(f"{child_prefix}[dim]... ({len(grandchildren)} submodules)[/]")
+
+
+@cli.command()
 @click.argument("file", metavar="FILE_PATH", type=click.Path(exists=True, path_type=Path))
 def tensors(file: Path) -> None:
     """Show tensors in a safetensors or GGUF file.
@@ -416,13 +562,6 @@ def _natural_sort_key(name: str) -> list:
     return [int(part) if part.isdigit() else part.lower() for part in re.split(r'(\d+)', name)]
 
 
-def _layer_name(tensor_name: str) -> str:
-    """Extract the layer name from a tensor name by stripping the last component."""
-    dot = tensor_name.rfind(".")
-    if dot > 0:
-        return tensor_name[:dot]
-    return tensor_name
-
 
 def _print_layers_and_summary(
     tensors: list[tuple[str, str, list[int], int]],
@@ -430,30 +569,20 @@ def _print_layers_and_summary(
     dtype_params: dict[str, int],
     total_params: int,
 ) -> None:
-    """Print tensors grouped by layer, followed by dtype summary."""
-    # Sort tensors naturally (numeric-aware) for input→output ordering
+    """Print tensor detail table followed by dtype summary."""
+    # Sort tensors naturally (numeric-aware) for consistent ordering
     tensors = sorted(tensors, key=lambda t: _natural_sort_key(t[0]))
 
-    # Tensor detail, grouped by layer
     table = Table(title="Tensors", title_style="bold")
     table.add_column("#", justify="right", style="dim")
-    table.add_column("Layer / Tensor")
+    table.add_column("Name")
     table.add_column("Dtype", style="cyan")
     table.add_column("Shape")
     table.add_column("Parameters", justify="right")
 
-    current_layer = None
     for i, (name, dtype, shape, param_count) in enumerate(tensors):
-        layer = _layer_name(name)
-        if layer != current_layer:
-            if current_layer is not None:
-                table.add_section()
-            table.add_row("", f"[bold]{layer}[/]", "", "", "")
-            current_layer = layer
-        # Show only the parameter name (last component) under the layer
-        param_name = name[name.rfind(".") + 1:] if "." in name else name
         shape_str = "\u00d7".join(str(d) for d in shape)
-        table.add_row(str(i + 1), f"  {param_name}", dtype, shape_str, _format_params(param_count))
+        table.add_row(str(i + 1), name, dtype, shape_str, _format_params(param_count))
 
     console.print(table)
 

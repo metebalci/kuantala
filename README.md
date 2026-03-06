@@ -41,6 +41,9 @@ kuantala quantize ./local-model --dtype MXFP8 --output ./model-fp8
 # Inspect model components
 kuantala components Wan-AI/Wan2.1-I2V-14B-Diffusers
 
+# Show model architecture (requires torch)
+kuantala config Wan-AI/Wan2.1-I2V-14B-Diffusers
+
 # Inspect tensors in a quantized file
 kuantala tensors ./output/transformer-Q4_K.gguf
 
@@ -81,6 +84,19 @@ kuantala components [OPTIONS] MODEL
 |--------|-------------|
 | `MODEL` | HuggingFace diffusers model ID (e.g. `Wan-AI/Wan2.1-I2V-14B-Diffusers`) or local directory path in diffusers format (required) |
 | `--hf-token TEXT` | HuggingFace auth token (optional, also uses token from `hf auth login` and `HF_TOKEN` env var) |
+
+### `kuantala config`
+
+```
+kuantala config [OPTIONS] MODEL
+```
+
+| Option | Description |
+|--------|-------------|
+| `MODEL` | HuggingFace diffusers model ID (e.g. `Wan-AI/Wan2.1-I2V-14B-Diffusers`) or local directory path in diffusers format (required) |
+| `--hf-token TEXT` | HuggingFace auth token (optional, also uses token from `hf auth login` and `HF_TOKEN` env var) |
+
+Shows the full module hierarchy of each quantizable component by loading model configs (no weights downloaded). Requires `torch` and `diffusers`/`transformers`.
 
 ### `kuantala formats`
 

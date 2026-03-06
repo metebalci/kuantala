@@ -32,6 +32,12 @@ def test_components_nonexistent_model():
     assert result.exit_code != 0
 
 
+def test_config_nonexistent_model():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["config", "/nonexistent/path"])
+    assert result.exit_code != 0
+
+
 def test_tensors_nonexistent_file():
     runner = CliRunner()
     result = runner.invoke(cli, ["tensors", "/nonexistent/file.gguf"])
