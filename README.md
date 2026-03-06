@@ -186,7 +186,7 @@ kuantala quantize black-forest-labs/FLUX.1-dev \
 
 ## Layer-Level Control
 
-Use `--keep` to disable quantization on specific layers by glob pattern. Matched layers stay at their original precision (FP16/BF16). Time embeddings, conditioning projections, and input/output layers are small but sensitive — keeping them unquantized has negligible size impact but helps quality.
+Use `--keep` to disable quantization on specific layers by glob pattern. Matched layers stay at their original precision. Time embeddings, conditioning projections, and input/output layers are small but sensitive — keeping them unquantized has negligible size impact but helps quality.
 
 ## Model Recipes
 
