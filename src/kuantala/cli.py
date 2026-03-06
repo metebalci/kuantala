@@ -165,9 +165,12 @@ def info(model: str, hf_token: str | None) -> None:
     repo_files: list[str] = []
     if not is_local:
         try:
-            from huggingface_hub import HfApi
+            from huggingface_hub import HfApi, RepoFile
             api = HfApi()
-            repo_files = [f.rfilename for f in api.list_repo_tree(model, token=hf_token, recursive=True)]
+            repo_files = [
+                f.rfilename for f in api.list_repo_tree(model, token=hf_token, recursive=True)
+                if isinstance(f, RepoFile)
+            ]
         except Exception:
             pass
 
