@@ -66,16 +66,23 @@ kuantala convert ./output/transformer-NVFP4.safetensors
 kuantala convert ./output/transformer-NVFP4.safetensors -o ./comfy-model.safetensors
 ```
 
+For models where diffusers uses different key names than the original (e.g. Wan), use `--remap-keys` to translate back to original names that ComfyUI expects:
+
+```bash
+kuantala convert ./wan-nvfp4/transformer-NVFP4.safetensors --remap-keys wan
+```
+
 The conversion performs:
 - **Nibble swap** — reorders packed FP4 byte layout to match ComfyUI expectations
 - **Scale tiling** — converts block scales from plain to cuBLAS tiled layout
-- **Key renaming** — translates modelopt tensor names to ComfyUI conventions
+- **Quantizer key renaming** — translates modelopt quantizer names to ComfyUI conventions
+- **Layer key remapping** — translates diffusers layer names to original names (with `--remap-keys`)
 - **Metadata injection** — adds `.comfy_quant` entries required by ComfyUI
 
-Full workflow:
+Full workflow (Wan example):
 ```bash
-kuantala quantize Wan-AI/Wan2.1-I2V-14B-Diffusers --dtype NVFP4 --output ./wan-nvfp4
-kuantala convert ./wan-nvfp4/transformer-NVFP4.safetensors
+kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4 --output ./wan-nvfp4
+kuantala convert ./wan-nvfp4/transformer-NVFP4.safetensors --remap-keys wan
 # Load transformer-NVFP4-comfyui.safetensors in ComfyUI
 ```
 
@@ -133,6 +140,7 @@ kuantala convert [OPTIONS] INPUT
 |--------|-------------|
 | `INPUT` | Path to a modelopt NVFP4 `.safetensors` file (required) |
 | `-o, --output` | Output file path (default: `{input_stem}-comfyui.safetensors`) |
+| `--remap-keys` | Remap diffusers key names to original: `wan` |
 
 ### `kuantala tensors`
 
