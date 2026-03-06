@@ -88,36 +88,16 @@ def components(model: str, show_all: bool) -> None:
     MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.1-I2V-14B-Diffusers)
     or a local directory path in diffusers format (with model_index.json).
     """
+    model_dir = _resolve_model_dir_cached(model)
+
     import json as _json
-    from pathlib import Path
 
-    local = Path(model)
-    is_local = local.is_dir()
-
-    if is_local:
-        model_dir = local
-        index_path = model_dir / "model_index.json"
-        if not index_path.exists():
-            raise click.ClickException(
-                f"No model_index.json found in {model_dir}. "
-                "The model directory must follow the HuggingFace diffusers layout."
-            )
-    else:
-        try:
-            from huggingface_hub import hf_hub_download
-        except ImportError:
-            raise click.ClickException(
-                f"'{model}' is not a local directory and huggingface-hub is not installed. "
-                "Install with: pip install huggingface-hub"
-            )
-        try:
-            index_path = Path(hf_hub_download(repo_id=model, filename="model_index.json"))
-        except Exception:
-            raise click.ClickException(
-                f"'{model}' does not contain a model_index.json on HuggingFace Hub. "
-                "Kuantala requires a diffusers-format model."
-            )
-        model_dir = None
+    index_path = model_dir / "model_index.json"
+    if not index_path.exists():
+        raise click.ClickException(
+            f"No model_index.json found in {model_dir}. "
+            "The model directory must follow the HuggingFace diffusers layout."
+        )
 
     with open(index_path) as f:
         index = _json.load(f)
@@ -125,8 +105,7 @@ def components(model: str, show_all: bool) -> None:
     model_type = index.get("_class_name")
 
     console.print(f"\n[bold]Model:[/] {model}")
-    if model_dir:
-        console.print(f"[bold]Path:[/] {model_dir}")
+    console.print(f"[bold]Path:[/] {model_dir}")
     if model_type:
         console.print(f"[bold]Pipeline:[/] {model_type}")
 
@@ -134,27 +113,14 @@ def components(model: str, show_all: bool) -> None:
     table.add_column("Name", style="cyan")
     table.add_column("Type", style="green")
     table.add_column("Class")
-    table.add_column("Parameters", justify="right")
+    table.add_column("Params", justify="right")
     table.add_column("Dtype", justify="right")
+    table.add_column("Size", justify="right")
 
     from kuantala.components import _classify_component
 
-    # For remote repos, list files to find safetensors per component
-    repo_files: list[str] = []
-    if not is_local:
-        try:
-            from huggingface_hub import HfApi, RepoFile
-            api = HfApi()
-            repo_files = [
-                f.rfilename for f in api.list_repo_tree(model, recursive=True)
-                if isinstance(f, RepoFile)
-            ]
-        except Exception:
-            pass
-
     _quantizable_types = {"transformer", "unet", "vae", "text_encoder", "image_encoder"}
 
-    components_to_show: list[tuple[str, str | None, str | None, str]] = []
     for key, value in index.items():
         if key.startswith("_") or value is None:
             continue
@@ -167,30 +133,18 @@ def components(model: str, show_all: bool) -> None:
         comp_type = _classify_component(key, class_name, library)
         if not show_all and comp_type not in _quantizable_types:
             continue
-        components_to_show.append((key, library, class_name, comp_type))
 
-    with console.status("Fetching model info...") as status:
-        rows: list[tuple[str, str, str, int, set]] = []
-        for key, library, class_name, comp_type in components_to_show:
-            class_label = f"{library}.{class_name}" if library and class_name else ""
+        class_label = f"{library}.{class_name}" if library and class_name else ""
 
-            headers_list: list[dict] = []
-            if is_local:
-                comp_dir = model_dir / key
-                if comp_dir.is_dir():
-                    for sf_path in sorted(comp_dir.glob("*.safetensors")):
-                        headers_list.append(_read_local_safetensors_header(sf_path))
-            else:
-                comp_sf_files = [f for f in repo_files if f.startswith(f"{key}/") and f.endswith(".safetensors")]
-                for sf_file in comp_sf_files:
-                    status.update(f"Fetching {sf_file}...")
-                    header = _fetch_remote_safetensors_header(model, sf_file)
-                    if header:
-                        headers_list.append(header)
-
-            total_params = 0
-            dtypes: set[str] = set()
-            for header in headers_list:
+        # Read safetensors headers for params/dtype/size
+        total_params = 0
+        total_size = 0
+        dtypes: set[str] = set()
+        comp_dir = model_dir / key
+        if comp_dir.is_dir():
+            for sf_path in sorted(comp_dir.glob("*.safetensors")):
+                header = _read_local_safetensors_header(sf_path)
+                total_size += sf_path.stat().st_size
                 for tname, meta in header.items():
                     if tname == "__metadata__":
                         continue
@@ -200,22 +154,63 @@ def components(model: str, show_all: bool) -> None:
                         param_count *= dim
                     total_params += param_count
 
-            rows.append((key, comp_type, class_label, total_params, dtypes))
-
-    for key, comp_type, class_label, total_params, dtypes in rows:
-        if total_params >= 1_000_000_000:
-            params_str = f"{total_params / 1_000_000_000:.1f}B"
-        elif total_params >= 1_000_000:
-            params_str = f"{total_params / 1_000_000:.0f}M"
-        elif total_params > 0:
-            params_str = f"{total_params / 1_000:.0f}K"
-        else:
-            params_str = ""
-
+        params_str = _format_params(total_params) if total_params > 0 else ""
         dtype_str = ", ".join(sorted(dtypes))
-        table.add_row(key, comp_type, class_label, params_str, dtype_str)
+
+        if total_size > 0:
+            gb = total_size / (1024 ** 3)
+            size_str = f"{gb:.1f} GB" if gb >= 1.0 else f"{total_size / (1024 ** 2):.0f} MB"
+        else:
+            size_str = ""
+
+        table.add_row(key, comp_type, class_label, params_str, dtype_str, size_str)
 
     console.print(table)
+
+
+def _resolve_model_dir_cached(model: str) -> Path:
+    """Resolve a model to a local directory, using HF cache if available.
+
+    For remote models, checks the cache first. If not cached, prompts
+    the user before downloading.
+    """
+    local = Path(model)
+    if local.is_dir():
+        return local
+
+    try:
+        from huggingface_hub import scan_cache_dir, snapshot_download
+    except ImportError:
+        raise click.ClickException(
+            f"'{model}' is not a local directory and huggingface-hub is not installed. "
+            "Install with: pip install huggingface-hub"
+        )
+
+    # Check if model is already in the HF cache
+    try:
+        cache_info = scan_cache_dir()
+        for repo in cache_info.repos:
+            if repo.repo_id == model and repo.repo_type == "model":
+                # Find the latest revision snapshot
+                for rev in sorted(repo.revisions, key=lambda r: r.last_modified, reverse=True):
+                    snapshot_path = rev.snapshot_path
+                    if (snapshot_path / "model_index.json").exists():
+                        return snapshot_path
+    except Exception:
+        pass
+
+    # Not cached — ask user
+    if not click.confirm(
+        f"Model '{model}' is not cached locally. Download it?",
+        default=True,
+    ):
+        raise click.Abort()
+
+    cache_dir = snapshot_download(
+        repo_id=model,
+        allow_patterns=["*.safetensors", "*.json", "*.txt", "*.model"],
+    )
+    return Path(cache_dir)
 
 
 def _read_local_safetensors_header(sf_path: Path) -> dict:
@@ -226,33 +221,6 @@ def _read_local_safetensors_header(sf_path: Path) -> dict:
         header_size = int.from_bytes(fh.read(8), "little")
         return _json.loads(fh.read(header_size))
 
-
-def _fetch_remote_safetensors_header(repo_id: str, filename: str) -> dict | None:
-    """Fetch safetensors header from HF Hub using HTTP range requests.
-
-    Authentication is handled automatically by huggingface-hub
-    (via ``hf auth login`` or the ``HF_TOKEN`` environment variable).
-    """
-    import json as _json
-    import struct
-
-    try:
-        from huggingface_hub import hf_hub_url, get_session, utils
-        url = hf_hub_url(repo_id=repo_id, filename=filename)
-        session = get_session()
-        headers = utils.build_hf_headers()
-        headers["Range"] = "bytes=0-7"
-        resp = session.get(url, headers=headers)
-        resp.raise_for_status()
-        header_size = struct.unpack("<Q", resp.content[:8])[0]
-        headers["Range"] = f"bytes=8-{8 + header_size - 1}"
-        resp = session.get(url, headers=headers)
-        resp.raise_for_status()
-        return _json.loads(resp.content)
-    except Exception as e:
-        from kuantala.utils import get_logger
-        get_logger(__name__).debug("Failed to fetch header for %s: %s", filename, e)
-        return None
 
 
 @cli.command("formats")
@@ -370,33 +338,13 @@ def config(model: str) -> None:
             "The config command requires torch and diffusers."
         )
 
-    local = Path(model)
-    is_local = local.is_dir()
-
-    if is_local:
-        model_dir = local
-        index_path = model_dir / "model_index.json"
-        if not index_path.exists():
-            raise click.ClickException(
-                f"No model_index.json found in {model_dir}. "
-                "The model directory must follow the HuggingFace diffusers layout."
-            )
-    else:
-        try:
-            from huggingface_hub import hf_hub_download
-        except ImportError:
-            raise click.ClickException(
-                f"'{model}' is not a local directory and huggingface-hub is not installed. "
-                "Install with: pip install huggingface-hub"
-            )
-        try:
-            index_path = Path(hf_hub_download(repo_id=model, filename="model_index.json"))
-        except Exception:
-            raise click.ClickException(
-                f"'{model}' does not contain a model_index.json on HuggingFace Hub. "
-                "Kuantala requires a diffusers-format model."
-            )
-        model_dir = index_path.parent
+    model_dir = _resolve_model_dir_cached(model)
+    index_path = model_dir / "model_index.json"
+    if not index_path.exists():
+        raise click.ClickException(
+            f"No model_index.json found in {model_dir}. "
+            "The model directory must follow the HuggingFace diffusers layout."
+        )
 
     with open(index_path) as f:
         index = _json.load(f)
@@ -422,16 +370,6 @@ def config(model: str) -> None:
             continue
 
         config_path = model_dir / key / "config.json"
-        if not config_path.exists() and not is_local:
-            try:
-                from huggingface_hub import hf_hub_download
-                config_path = Path(hf_hub_download(
-                    repo_id=model, filename=f"{key}/config.json"
-                ))
-            except Exception:
-                console.print(f"\n[yellow]Could not fetch config for {key}[/]")
-                continue
-
         if not config_path.exists():
             continue
 
