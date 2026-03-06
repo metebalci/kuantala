@@ -109,16 +109,48 @@ def info(model: str, hf_token: str | None) -> None:
     MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.1-I2V-14B-Diffusers)
     or a local directory path in diffusers format (with model_index.json).
     """
-    from kuantala.components import detect_components
-    from kuantala.model_loader import resolve_model_path
+    import json as _json
+    from pathlib import Path
 
-    model_dir = resolve_model_path(model, hf_token)
-    model_info = detect_components(model_dir)
+    local = Path(model)
+    is_local = local.is_dir()
+
+    if is_local:
+        model_dir = local
+        index_path = model_dir / "model_index.json"
+        if not index_path.exists():
+            raise click.ClickException(
+                f"No model_index.json found in {model_dir}. "
+                "The model directory must follow the HuggingFace diffusers layout."
+            )
+    else:
+        # Remote: download only model_index.json
+        try:
+            from huggingface_hub import hf_hub_download
+        except ImportError:
+            raise click.ClickException(
+                f"'{model}' is not a local directory and huggingface-hub is not installed. "
+                "Install with: pip install kuantala[hub]"
+            )
+        try:
+            index_path = Path(hf_hub_download(repo_id=model, filename="model_index.json", token=hf_token))
+        except Exception:
+            raise click.ClickException(
+                f"'{model}' does not contain a model_index.json on HuggingFace Hub. "
+                "Kuantala requires a diffusers-format model."
+            )
+        model_dir = None
+
+    with open(index_path) as f:
+        index = _json.load(f)
+
+    model_type = index.get("_class_name")
 
     console.print(f"\n[bold]Model:[/] {model}")
-    console.print(f"[bold]Path:[/] {model_dir}")
-    if model_info.model_type:
-        console.print(f"[bold]Pipeline:[/] {model_info.model_type}")
+    if model_dir:
+        console.print(f"[bold]Path:[/] {model_dir}")
+    if model_type:
+        console.print(f"[bold]Pipeline:[/] {model_type}")
 
     table = Table(title="Components")
     table.add_column("Name", style="cyan")
@@ -127,19 +159,45 @@ def info(model: str, hf_token: str | None) -> None:
     table.add_column("Parameters", justify="right")
     table.add_column("Dtype", justify="right")
 
-    import json as _json
+    from kuantala.components import _classify_component
 
-    for comp in model_info.components:
-        class_label = f"{comp.library}.{comp.class_name}" if comp.library and comp.class_name else ""
+    # For remote repos, list files to find safetensors per component
+    repo_files: list[str] = []
+    if not is_local:
+        try:
+            from huggingface_hub import HfApi
+            api = HfApi()
+            repo_files = [f.rfilename for f in api.list_repo_tree(model, token=hf_token, recursive=True)]
+        except Exception:
+            pass
+
+    for key, value in index.items():
+        if key.startswith("_") or value is None:
+            continue
+        library = value[0] if isinstance(value, list) and len(value) >= 1 else None
+        class_name = value[1] if isinstance(value, list) and len(value) >= 2 else None
+        comp_type = _classify_component(key, class_name, library)
+        class_label = f"{library}.{class_name}" if library and class_name else ""
+
+        # Collect safetensors headers (local or remote)
+        headers_list: list[dict] = []
+        if is_local:
+            comp_dir = model_dir / key
+            if comp_dir.is_dir():
+                for sf_path in sorted(comp_dir.glob("*.safetensors")):
+                    headers_list.append(_read_local_safetensors_header(sf_path))
+        else:
+            for sf_file in [f for f in repo_files if f.startswith(f"{key}/") and f.endswith(".safetensors")]:
+                header = _fetch_remote_safetensors_header(model, sf_file, hf_token)
+                if header:
+                    headers_list.append(header)
+
+        # Compute params and dtypes from headers
         total_params = 0
         dtypes: set[str] = set()
-        for sf_path in sorted(comp.path.glob("*.safetensors")):
-            # Read metadata header without loading tensors (handles bfloat16 etc.)
-            with open(sf_path, "rb") as fh:
-                header_size = int.from_bytes(fh.read(8), "little")
-                header = _json.loads(fh.read(header_size))
-            for name, meta in header.items():
-                if name == "__metadata__":
+        for header in headers_list:
+            for tname, meta in header.items():
+                if tname == "__metadata__":
                     continue
                 dtypes.add(meta.get("dtype", "unknown"))
                 param_count = 1
@@ -151,13 +209,52 @@ def info(model: str, hf_token: str | None) -> None:
             params_str = f"{total_params / 1_000_000_000:.1f}B"
         elif total_params >= 1_000_000:
             params_str = f"{total_params / 1_000_000:.0f}M"
-        else:
+        elif total_params > 0:
             params_str = f"{total_params / 1_000:.0f}K"
+        else:
+            params_str = ""
 
         dtype_str = ", ".join(sorted(dtypes))
-        table.add_row(comp.name, comp.component_type, class_label, params_str, dtype_str)
+        table.add_row(key, comp_type, class_label, params_str, dtype_str)
 
     console.print(table)
+
+
+def _read_local_safetensors_header(sf_path: Path) -> dict:
+    """Read the JSON header from a local safetensors file."""
+    import json as _json
+
+    with open(sf_path, "rb") as fh:
+        header_size = int.from_bytes(fh.read(8), "little")
+        return _json.loads(fh.read(header_size))
+
+
+def _fetch_remote_safetensors_header(repo_id: str, filename: str, token: str | None) -> dict | None:
+    """Fetch safetensors header from HF Hub using HTTP range requests."""
+    import json as _json
+    import struct
+
+    try:
+        from huggingface_hub import hf_hub_url, get_session
+        url = hf_hub_url(repo_id=repo_id, filename=filename)
+        session = get_session()
+        headers: dict[str, str] = {}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        # Read header size (first 8 bytes)
+        headers["Range"] = "bytes=0-7"
+        resp = session.get(url, headers=headers)
+        resp.raise_for_status()
+        header_size = struct.unpack("<Q", resp.content[:8])[0]
+        # Read the JSON header
+        headers["Range"] = f"bytes=8-{8 + header_size - 1}"
+        resp = session.get(url, headers=headers)
+        resp.raise_for_status()
+        return _json.loads(resp.content)
+    except Exception as e:
+        from kuantala.utils import get_logger
+        get_logger(__name__).debug("Failed to fetch header for %s: %s", filename, e)
+        return None
 
 
 @cli.command("list-formats")
