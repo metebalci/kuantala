@@ -373,36 +373,7 @@ def _inspect_safetensors(file: Path, top: int | None) -> None:
         dtype_params[dtype] = dtype_params.get(dtype, 0) + param_count
         tensors.append((name, dtype, shape, param_count))
 
-    console.print(f"[bold]Tensors:[/] {len(tensors)}")
-    console.print(f"[bold]Total parameters:[/] {_format_params(total_params)}")
-
-    # Dtype summary
-    summary = Table(title="Dtype Summary", title_style="bold")
-    summary.add_column("Dtype", style="cyan")
-    summary.add_column("Tensors", justify="right")
-    summary.add_column("Parameters", justify="right")
-    summary.add_column("% of Total", justify="right")
-    for dtype in sorted(dtype_counts.keys()):
-        pct = dtype_params[dtype] / total_params * 100 if total_params else 0
-        summary.add_row(dtype, str(dtype_counts[dtype]), _format_params(dtype_params[dtype]), f"{pct:.1f}%")
-    console.print(summary)
-
-    # Layer detail
-    table = Table(title="Layers", title_style="bold")
-    table.add_column("#", justify="right", style="dim")
-    table.add_column("Name")
-    table.add_column("Dtype", style="cyan")
-    table.add_column("Shape")
-    table.add_column("Parameters", justify="right")
-
-    for i, (name, dtype, shape, param_count) in enumerate(tensors):
-        if top is not None and i >= top:
-            console.print(f"  ... and {len(tensors) - top} more layers (use --top to show more)")
-            break
-        shape_str = "\u00d7".join(str(d) for d in shape)
-        table.add_row(str(i + 1), name, dtype, shape_str, _format_params(param_count))
-
-    console.print(table)
+    _print_layers_and_summary(tensors, dtype_counts, dtype_params, total_params, top)
 
 
 def _inspect_gguf(file: Path, top: int | None) -> None:
@@ -437,20 +408,17 @@ def _inspect_gguf(file: Path, top: int | None) -> None:
         dtype_params[dtype] = dtype_params.get(dtype, 0) + param_count
         tensors.append((name, dtype, shape, param_count))
 
-    console.print(f"[bold]Tensors:[/] {len(tensors)}")
-    console.print(f"[bold]Total parameters:[/] {_format_params(total_params)}")
+    _print_layers_and_summary(tensors, dtype_counts, dtype_params, total_params, top)
 
-    # Dtype summary
-    summary = Table(title="Dtype Summary", title_style="bold")
-    summary.add_column("Dtype", style="cyan")
-    summary.add_column("Tensors", justify="right")
-    summary.add_column("Parameters", justify="right")
-    summary.add_column("% of Total", justify="right")
-    for dtype in sorted(dtype_counts.keys()):
-        pct = dtype_params[dtype] / total_params * 100 if total_params else 0
-        summary.add_row(dtype, str(dtype_counts[dtype]), _format_params(dtype_params[dtype]), f"{pct:.1f}%")
-    console.print(summary)
 
+def _print_layers_and_summary(
+    tensors: list[tuple[str, str, list[int], int]],
+    dtype_counts: dict[str, int],
+    dtype_params: dict[str, int],
+    total_params: int,
+    top: int | None,
+) -> None:
+    """Print layer detail table followed by dtype summary."""
     # Layer detail
     table = Table(title="Layers", title_style="bold")
     table.add_column("#", justify="right", style="dim")
@@ -467,3 +435,16 @@ def _inspect_gguf(file: Path, top: int | None) -> None:
         table.add_row(str(i + 1), name, dtype, shape_str, _format_params(param_count))
 
     console.print(table)
+
+    # Dtype summary
+    summary = Table(title="Dtype Summary", title_style="bold")
+    summary.add_column("Dtype", style="cyan")
+    summary.add_column("Tensors", justify="right")
+    summary.add_column("Parameters", justify="right")
+    summary.add_column("% of Total", justify="right")
+    for dtype in sorted(dtype_counts.keys()):
+        pct = dtype_params[dtype] / total_params * 100 if total_params else 0
+        summary.add_row(dtype, str(dtype_counts[dtype]), _format_params(dtype_params[dtype]), f"{pct:.1f}%")
+    summary.add_section()
+    summary.add_row("[bold]Total[/]", f"[bold]{len(tensors)}[/]", f"[bold]{_format_params(total_params)}[/]", "[bold]100%[/]")
+    console.print(summary)
