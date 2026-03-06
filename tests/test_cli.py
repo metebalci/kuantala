@@ -16,7 +16,7 @@ def test_list_formats():
     runner = CliRunner()
     result = runner.invoke(cli, ["list-formats"])
     assert result.exit_code == 0
-    assert "Q4_K_M" in result.output
+    assert "Q4_K" in result.output
     assert "MXFP8" in result.output
 
 

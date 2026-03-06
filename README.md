@@ -22,11 +22,13 @@ pip install kuantala[all]
 
 For local models only, `huggingface-hub` is not needed. PyTorch is not declared as a dependency since it requires a platform-specific CUDA build — install it manually before `kuantala[nvidia]` or `kuantala[all]`.
 
+> **Note:** The NVIDIA backend requires Python ≤ 3.12 due to `nvidia-modelopt` package constraints. The GGUF backend works with any Python version.
+
 ## Quick Start
 
 ```bash
-# Quantize to GGUF Q4_K_M
-kuantala quantize Wan-AI/Wan2.1-I2V-14B --dtype Q4_K_M --output ./wan-q4
+# Quantize to GGUF Q4_K
+kuantala quantize Wan-AI/Wan2.1-I2V-14B --dtype Q4_K --output ./wan-q4
 
 # Quantize to NVIDIA MXFP8
 kuantala quantize ./local-model --dtype MXFP8 --output ./model-fp8
@@ -49,7 +51,7 @@ kuantala quantize [OPTIONS] MODEL
 | Option | Description |
 |--------|-------------|
 | `MODEL` | HuggingFace model ID (e.g. `Wan-AI/Wan2.1-I2V-14B`) or local directory path (required) |
-| `-d, --dtype` | Target quantization type (required). GGUF: `Q2_K`, `Q3_K_S`, `Q3_K_M`, `Q3_K_L`, `Q4_0`, `Q4_K_S`, `Q4_K_M`, `Q5_0`, `Q5_K_S`, `Q5_K_M`, `Q6_K`, `Q8_0`. NVIDIA: `MXFP8`, `NVFP4` |
+| `-d, --dtype` | Target quantization type (required). GGUF: `Q2_K`, `Q3_K`, `Q4_0`, `Q4_K`, `Q5_0`, `Q5_K`, `Q6_K`, `Q8_0`. NVIDIA: `MXFP8`, `NVFP4` |
 | `-o, --output` | Output directory (default: `./output`) |
 | `--vae-dtype` | VAE quantization dtype (default: `skip`). Accepts any dtype above plus `F16`, `F32`, `BF16`, `skip` |
 | `--te-dtype` | Text encoder quantization dtype (default: same as `--dtype`). Same choices as `--vae-dtype` |
@@ -91,7 +93,7 @@ VAE is skipped by default (quantizing below FP16 causes visible artifacts).
 
 ```bash
 kuantala quantize black-forest-labs/FLUX.1-dev \
-    --dtype Q4_K_M \
+    --dtype Q4_K \
     --vae-dtype skip \
     --te-dtype Q8_0
 ```
@@ -102,16 +104,16 @@ Keep important layers at higher precision using one or more methods:
 
 ```bash
 # Heuristic: preserve known-sensitive layers (norms, attention QKV, timestep embeddings)
-kuantala quantize model --dtype Q4_K_M --mixed-heuristics
+kuantala quantize model --dtype Q4_K --mixed-heuristics
 
 # Statistics: preserve top N% layers with highest outlier ratios
-kuantala quantize model --dtype Q4_K_M --mixed-statistics 10
+kuantala quantize model --dtype Q4_K --mixed-statistics 10
 
 # Calibration: measure actual quantization error (NVIDIA backend only)
 kuantala quantize model --dtype MXFP8 --mixed-calibration
 
 # Combine methods + manual overrides
-kuantala quantize model --dtype Q4_K_M \
+kuantala quantize model --dtype Q4_K \
     --mixed-heuristics --mixed-statistics 15 \
     --keep "norm_*:F16" --keep "attn_*:Q8_0"
 ```
@@ -126,7 +128,7 @@ from kuantala import QuantConfig, quantize
 
 config = QuantConfig(
     model_source="Wan-AI/Wan2.1-I2V-14B",
-    dtype="Q4_K_M",
+    dtype="Q4_K",
     vae_dtype="skip",
     output_dir=Path("./output"),
     mixed_heuristics=True,
@@ -143,11 +145,11 @@ output_files = quantize(config)
 | Format | Description |
 |--------|-------------|
 | Q2_K   | 2-bit K-quant (very aggressive) |
-| Q3_K_S/M/L | 3-bit K-quant |
+| Q3_K   | 3-bit K-quant |
 | Q4_0   | 4-bit basic |
-| Q4_K_S/M | 4-bit K-quant (Q4_K_M recommended) |
+| Q4_K   | 4-bit K-quant (recommended) |
 | Q5_0   | 5-bit basic |
-| Q5_K_S/M | 5-bit K-quant |
+| Q5_K   | 5-bit K-quant |
 | Q6_K   | 6-bit K-quant |
 | Q8_0   | 8-bit (near lossless) |
 

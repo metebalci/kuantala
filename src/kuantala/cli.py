@@ -132,15 +132,11 @@ def list_formats() -> None:
 
     descriptions = {
         "Q2_K": "2-bit K-quant (very aggressive, quality loss)",
-        "Q3_K_S": "3-bit K-quant small",
-        "Q3_K_M": "3-bit K-quant medium",
-        "Q3_K_L": "3-bit K-quant large",
+        "Q3_K": "3-bit K-quant",
         "Q4_0": "4-bit basic quantization",
-        "Q4_K_S": "4-bit K-quant small",
-        "Q4_K_M": "4-bit K-quant medium (recommended)",
+        "Q4_K": "4-bit K-quant (recommended)",
         "Q5_0": "5-bit basic quantization",
-        "Q5_K_S": "5-bit K-quant small",
-        "Q5_K_M": "5-bit K-quant medium",
+        "Q5_K": "5-bit K-quant",
         "Q6_K": "6-bit K-quant (high quality)",
         "Q8_0": "8-bit quantization (near lossless)",
         "MXFP8": "Microscaling FP8 (NVIDIA, requires Hopper+)",

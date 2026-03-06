@@ -26,7 +26,7 @@ class QuantBackend(ABC):
         Args:
             component_path: Directory containing safetensors files.
             output_path: Where to write the quantized output.
-            dtype: Target quantization type (e.g. "Q4_K_M", "MXFP8").
+            dtype: Target quantization type (e.g. "Q4_K", "MXFP8").
             config: Full quantization config.
             layer_overrides: Per-layer dtype overrides {layer_name: dtype}.
 

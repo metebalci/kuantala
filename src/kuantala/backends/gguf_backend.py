@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from safetensors import safe_open
+
 from kuantala.backends import QuantBackend
 from kuantala.config import GGUF_TYPES, QuantConfig
 from kuantala.utils import get_logger, make_progress
@@ -34,11 +36,13 @@ def _init_type_map() -> None:
             "gguf package not installed. Install with: pip install kuantala[gguf]"
         )
     type_enum = gguf.GGMLQuantizationType
+
     for name in GGUF_TYPES:
         try:
             _GGUF_TYPE_MAP[name] = type_enum[name]
         except KeyError:
             pass
+
     # Also map passthrough types
     _GGUF_TYPE_MAP["F16"] = type_enum["F16"]
     _GGUF_TYPE_MAP["F32"] = type_enum["F32"]
@@ -203,11 +207,11 @@ def quantize_tensor(data: np.ndarray, dtype: str) -> tuple[np.ndarray, int]:
     _init_type_map()
 
     if dtype == "F16":
-        return data.astype(np.float16).view(np.uint8), gguf.GGMLQuantizationType.F16
+        return data.astype(np.float16), gguf.GGMLQuantizationType.F16
     if dtype == "F32":
-        return data.astype(np.float32).view(np.uint8), gguf.GGMLQuantizationType.F32
+        return data.astype(np.float32), gguf.GGMLQuantizationType.F32
     if dtype == "BF16":
-        return data.astype(np.float32).view(np.uint8), gguf.GGMLQuantizationType.BF16
+        return data.astype(np.float32), gguf.GGMLQuantizationType.BF16
     if dtype == "Q8_0":
         return _quantize_tensor_q8_0(data)
     if dtype == "Q4_0":
@@ -255,12 +259,18 @@ class GGUFBackend(QuantBackend):
                 f"No safetensors files found in {component_path}"
             )
 
-        # Collect all tensor names and shapes first
+        # Collect all tensor names, deduplicating across files
+        # Prefer non-fp16 files (higher precision source)
+        seen_names: set[str] = set()
         tensor_info: list[tuple[str, Path]] = []
-        for sf_path in safetensor_files:
+        # Sort so non-fp16 files come first (fp16 files contain "fp16" in name)
+        sorted_files = sorted(safetensor_files, key=lambda p: "fp16" in p.name)
+        for sf_path in sorted_files:
             with safe_open(str(sf_path), framework="numpy") as f:
                 for name in f.keys():
-                    tensor_info.append((name, sf_path))
+                    if name not in seen_names:
+                        seen_names.add(name)
+                        tensor_info.append((name, sf_path))
 
         log.info(
             "Quantizing %d tensors to %s -> %s",
@@ -291,19 +301,34 @@ class GGUFBackend(QuantBackend):
                             effective_dtype = override_dtype
                             break
 
-                # Skip 1D tensors (biases, norms) - keep at F16 unless explicitly overridden
-                if data.ndim <= 1 and tensor_name not in (layer_overrides or {}):
-                    effective_dtype = "F16"
+                # Skip small tensors and tensors with incompatible shapes
+                if tensor_name not in (layer_overrides or {}):
+                    # 1D tensors (biases, norms) - keep at F16
+                    if data.ndim <= 1:
+                        effective_dtype = "F16"
+                    # Tensors whose last dimension isn't a multiple of block size
+                    elif effective_dtype not in ("F16", "F32", "BF16"):
+                        from gguf.quants import GGML_QUANT_SIZES
+                        block_size, _ = GGML_QUANT_SIZES[_GGUF_TYPE_MAP.get(effective_dtype, 0)]
+                        if data.shape[-1] % block_size != 0:
+                            log.debug(
+                                "Keeping %s as F16 (shape %s not aligned to block size %d)",
+                                tensor_name, data.shape, block_size,
+                            )
+                            effective_dtype = "F16"
 
                 shape = data.shape
                 quantized_data, qtype = quantize_tensor(data, effective_dtype)
 
-                writer.add_tensor(
-                    tensor_name,
-                    quantized_data,
-                    raw_shape=shape,
-                    raw_dtype=qtype,
-                )
+                if effective_dtype in ("F16", "F32", "BF16"):
+                    # Passthrough: writer auto-detects dtype from numpy array
+                    writer.add_tensor(tensor_name, quantized_data)
+                else:
+                    # Quantized: reshape bytes to match expected byte layout
+                    from gguf.quants import quant_shape_to_byte_shape
+                    byte_shape = quant_shape_to_byte_shape(shape, qtype)
+                    quantized_data = quantized_data.reshape(byte_shape)
+                    writer.add_tensor(tensor_name, quantized_data, raw_dtype=qtype)
 
                 progress.advance(task)
 

@@ -15,11 +15,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-hub = ["huggingface-hub>=0.20"]
-gguf = ["gguf>=0.6", "numpy>=1.24"]
-nvidia = ["diffusers>=0.25", "nvidia-modelopt>=0.11"]
+hub = ["huggingface-hub"]
+gguf = ["gguf", "numpy"]
+nvidia = ["diffusers", "nvidia-modelopt"]
 all = ["kuantala[hub,gguf,nvidia]"]
-dev = ["pytest>=7.0", "build>=1.0", "twine>=5.0", "kuantala[all]"]
+dev = ["pytest", "build", "twine", "kuantala[all]"]
 
 [project.scripts]
 kuantala = "kuantala.cli:cli"
