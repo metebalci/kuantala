@@ -16,6 +16,10 @@ pip install kuantala[gguf,hub]
 pip install torch --index-url https://download.pytorch.org/whl/cu130
 pip install kuantala[nvidia]
 
+# Optional: install Triton for faster quantization simulations
+pip install triton-windows  # Windows
+pip install triton          # Linux
+
 # Everything (hub, gguf, nvidia)
 pip install kuantala[all]
 ```
@@ -166,6 +170,7 @@ output_files = quantize(config)
 python -m venv .venv
 source .venv/bin/activate
 pip install torch --index-url https://download.pytorch.org/whl/cu130
+pip install triton-windows  # or: pip install triton (Linux)
 pip install -e ".[dev]"
 pytest tests/
 ```
