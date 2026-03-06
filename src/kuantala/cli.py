@@ -101,9 +101,10 @@ def quantize(
 
 @cli.command()
 @click.argument("model", metavar="MODEL_ID_OR_PATH")
+@click.option("--show-all", is_flag=True, help="Show all components, including non-quantizable ones.")
 @click.option("--hf-token", envvar="HF_TOKEN", default=None,
               help="HuggingFace auth token (optional, also uses token from `hf auth login`).")
-def info(model: str, hf_token: str | None) -> None:
+def info(model: str, show_all: bool, hf_token: str | None) -> None:
     """Inspect a diffusion model's components.
 
     MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.1-I2V-14B-Diffusers)
@@ -174,12 +175,22 @@ def info(model: str, hf_token: str | None) -> None:
         except Exception:
             pass
 
+    _quantizable_types = {"transformer", "unet", "vae", "text_encoder", "image_encoder"}
+
     for key, value in index.items():
         if key.startswith("_") or value is None:
             continue
-        library = value[0] if isinstance(value, list) and len(value) >= 1 else None
-        class_name = value[1] if isinstance(value, list) and len(value) >= 2 else None
+        # Skip non-component entries (e.g. boundary_ratio: 0.9)
+        if not isinstance(value, list):
+            continue
+        library = value[0] if len(value) >= 1 else None
+        class_name = value[1] if len(value) >= 2 else None
+        # Skip [None, None] placeholders
+        if library is None and class_name is None:
+            continue
         comp_type = _classify_component(key, class_name, library)
+        if not show_all and comp_type not in _quantizable_types:
+            continue
         class_label = f"{library}.{class_name}" if library and class_name else ""
 
         # Collect safetensors headers (local or remote)
