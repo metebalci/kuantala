@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kuantala"
+version = "0.1.0"
+description = "Quantize diffusion models to GGUF, MXFP8, and NVFP4 formats"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+dependencies = [
+    "click>=8.0",
+    "safetensors>=0.4",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+hub = ["huggingface-hub>=0.20"]
+gguf = ["gguf>=0.6", "numpy>=1.24"]
+nvidia = ["diffusers>=0.25", "nvidia-modelopt>=0.11"]
+all = ["kuantala[hub,gguf,nvidia]"]
+dev = ["pytest>=7.0", "build>=1.0", "twine>=5.0", "kuantala[all]"]
+
+[project.scripts]
+kuantala = "kuantala.cli:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kuantala"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
