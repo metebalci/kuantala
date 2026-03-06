@@ -430,7 +430,7 @@ def config(model: str, hf_token: str | None) -> None:
         _print_module_tree(model_instance, prefix="")
 
 
-def _print_module_tree(module: object, prefix: str, max_depth: int = 4, _depth: int = 0) -> None:
+def _print_module_tree(module: object, prefix: str) -> None:
     """Print a module hierarchy as a tree."""
     import torch.nn as nn
 
@@ -459,12 +459,7 @@ def _print_module_tree(module: object, prefix: str, max_depth: int = 4, _depth: 
 
         console.print(f"{prefix}{connector}[cyan]{name}[/] [dim]{child_type}{extra}{param_str}[/]")
 
-        # Recurse if not too deep and has children
-        grandchildren = list(child.named_children())
-        if grandchildren and _depth < max_depth:
-            _print_module_tree(child, child_prefix, max_depth, _depth + 1)
-        elif grandchildren:
-            console.print(f"{child_prefix}[dim]... ({len(grandchildren)} submodules)[/]")
+        _print_module_tree(child, child_prefix)
 
 
 @cli.command()
