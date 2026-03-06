@@ -247,8 +247,11 @@ def _quantize_component(
         if config.keep:
             _disable_quantizers_by_pattern(model, config.keep)
 
+        import warnings
         log.info("Compressing weights to real %s...", dtype)
-        mtq.compress(model)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="Real quantization has been applied")
+            mtq.compress(model)
     finally:
         _restore_kv_cache_plugins(saved_plugins)
 
