@@ -34,7 +34,7 @@ class QuantConfig:
 
     # Per-component overrides ("skip" = don't touch, None = use main dtype)
     vae_dtype: str | None = "skip"
-    te_dtype: str | None = None
+    te_dtype: str | None = "skip"
     ie_dtype: str | None = None
 
     # Calibration (random forward passes to determine optimal scale factors)

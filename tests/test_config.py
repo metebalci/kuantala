@@ -9,6 +9,7 @@ def test_valid_config():
     config = QuantConfig(model_source="test", dtype="FP8")
     assert config.dtype == "FP8"
     assert config.vae_dtype == "skip"
+    assert config.te_dtype == "skip"
     assert config.calibration is True
 
 

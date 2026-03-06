@@ -27,7 +27,7 @@ def cli(verbose: bool) -> None:
 @click.option("--vae-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=False),
               default="skip", help="VAE quantization dtype (default: skip).")
 @click.option("--te-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=False),
-              default=None, help="Text encoder quantization dtype (default: same as --dtype).")
+              default="skip", help="Text encoder quantization dtype (default: skip).")
 @click.option("--ie-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=False),
               default=None, help="Image encoder quantization dtype (default: same as --dtype).")
 @click.option("--keep", multiple=True,

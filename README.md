@@ -68,7 +68,7 @@ kuantala quantize [OPTIONS] MODEL
 | `-d, --dtype` | Target format: `FP8`, `NVFP4`, `FP16`, `BF16` (required) |
 | `-o, --output` | Output directory (default: `./output`) |
 | `--vae-dtype` | VAE dtype (default: `skip`). Same choices as `--dtype` plus `skip` |
-| `--te-dtype` | Text encoder dtype (default: same as `--dtype`) |
+| `--te-dtype` | Text encoder dtype (default: `skip`) |
 | `--ie-dtype` | Image encoder dtype (default: same as `--dtype`) |
 | `--keep PATTERN` | Disable quantization on layers matching this glob pattern (repeatable) |
 
@@ -127,7 +127,7 @@ Kuantala detects and quantizes the following component types from diffusers mode
 | Component | Flag | Default |
 |-----------|------|---------|
 | Transformer / UNet | `--dtype` | required |
-| Text encoder | `--te-dtype` | same as `--dtype` |
+| Text encoder | `--te-dtype` | `skip` |
 | Image encoder | `--ie-dtype` | same as `--dtype` |
 | VAE | `--vae-dtype` | `skip` |
 
