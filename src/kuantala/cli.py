@@ -409,7 +409,12 @@ def config(model: str, hf_token: str | None) -> None:
         try:
             lib = importlib.import_module(library)
             cls = getattr(lib, class_name)
-            model_instance = cls.from_config(str(config_path.parent))
+            if library == "transformers":
+                from transformers import AutoConfig
+                cfg = AutoConfig.from_pretrained(str(config_path.parent))
+                model_instance = cls(cfg)
+            else:
+                model_instance = cls.from_config(str(config_path.parent))
         except Exception as e:
             console.print(f"\n[yellow]Could not load {full_class} for '{key}': {e}[/]")
             continue
