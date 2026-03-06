@@ -74,23 +74,25 @@ class NvidiaBackend(QuantBackend):
 
         # Load model weights
         log.info("Loading model from %s", component_path)
-        from diffusers import DiffusionPipeline
 
-        # Try to load just the component as a model
         state_dict = {}
         for sf_path in sorted(component_path.glob("*.safetensors")):
             from safetensors.torch import load_file
             state_dict.update(load_file(str(sf_path)))
 
-        # Build a simple module from state dict
+        # Build a nested module hierarchy from dotted parameter names
         model = torch.nn.Module()
         for name, tensor in state_dict.items():
-            parts = name.rsplit(".", 1)
+            parts = name.split(".")
+            # Create intermediate submodules as needed
+            parent = model
+            for part in parts[:-1]:
+                if not hasattr(parent, part):
+                    child = torch.nn.Module()
+                    parent.add_module(part, child)
+                parent = getattr(parent, part)
             param = torch.nn.Parameter(tensor.cuda(), requires_grad=False)
-            if len(parts) == 2:
-                model.register_parameter(name, param)
-            else:
-                model.register_parameter(name, param)
+            parent.register_parameter(parts[-1], param)
 
         # Apply quantization
         quant_cfg = _get_quant_config(dtype)
