@@ -36,8 +36,6 @@ class ModelInfo:
                 return c
         return None
 
-    def get_all(self, component_type: str) -> list[ModelComponent]:
-        return [c for c in self.components if c.component_type == component_type]
 
 
 # Known class mappings: "library.ClassName" -> component_type

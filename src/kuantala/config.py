@@ -16,10 +16,6 @@ ALL_DTYPES = QUANT_DTYPES + PASSTHROUGH_DTYPES
 COMPONENT_DTYPES = ALL_DTYPES + ["skip"]
 
 
-def is_quant_dtype(dtype: str) -> bool:
-    return dtype in QUANT_DTYPES
-
-
 def is_passthrough_dtype(dtype: str) -> bool:
     return dtype in PASSTHROUGH_DTYPES
 
@@ -35,7 +31,7 @@ class QuantConfig:
     # Per-component overrides ("skip" = don't touch, None = use main dtype)
     vae_dtype: str | None = "skip"
     te_dtype: str | None = "skip"
-    ie_dtype: str | None = None
+    ie_dtype: str | None = "skip"
 
     # Calibration (random forward passes to determine optimal scale factors)
     calibration: bool = True

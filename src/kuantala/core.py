@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import importlib
 from pathlib import Path
 from typing import Any
@@ -123,6 +124,7 @@ def _run_random_forward(model: Any, component_type: str, cfg: dict, device: Any,
             try:
                 model(hidden_states, timestep, encoder_hidden_states)
             except Exception:
+                log.warning("Forward pass failed for %s, falling back to parameter activation", component_type)
                 for p in model.parameters():
                     _ = p * 1.0
 
@@ -145,6 +147,7 @@ def _run_random_forward(model: Any, component_type: str, cfg: dict, device: Any,
             try:
                 model(x)
             except Exception:
+                log.warning("Forward pass failed for %s, falling back to parameter activation", component_type)
                 for p in model.parameters():
                     _ = p * 1.0
 
@@ -159,6 +162,7 @@ def _run_random_forward(model: Any, component_type: str, cfg: dict, device: Any,
             try:
                 model(pixel_values)
             except Exception:
+                log.warning("Forward pass failed for %s, falling back to parameter activation", component_type)
                 for p in model.parameters():
                     _ = p * 1.0
 
@@ -234,7 +238,7 @@ def _quantize_component(
     # Quantize with modelopt
     quant_cfg = _MODELOPT_CONFIGS[dtype]
 
-    forward_loop = lambda m: None  # noqa: E731
+    def forward_loop(m): pass  # no-op when calibration disabled
     if config.calibration:
         forward_loop = _make_calibration_fn(model, component, config.calib_size)
 
@@ -261,6 +265,7 @@ def _quantize_component(
 
     file_size_mb = output_file.stat().st_size / (1024 * 1024)
     log.info("Written %s (%.1f MB)", output_file, file_size_mb)
+    del model
     return output_file
 
 
@@ -292,6 +297,9 @@ def quantize(config: QuantConfig) -> list[Path]:
         output_path = config.output_dir / f"{component.name}-{dtype}"
         output_file = _quantize_component(component, dtype, config, output_path)
         output_files.append(output_file)
+        # Free GPU memory for next component
+        torch.cuda.empty_cache()
+        gc.collect()
 
     if not output_files:
         log.warning("No components were quantized.")

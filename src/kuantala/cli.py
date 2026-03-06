@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import click
@@ -9,6 +10,9 @@ from rich.table import Table
 
 from kuantala.config import ALL_DTYPES, COMPONENT_DTYPES
 from kuantala.utils import console, setup_logging
+
+# Component types that can be quantized
+_QUANTIZABLE_TYPES = {"transformer", "unet", "vae", "text_encoder", "image_encoder"}
 
 
 @click.group()
@@ -29,7 +33,7 @@ def cli(verbose: bool) -> None:
 @click.option("--te-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=False),
               default="skip", help="Text encoder quantization dtype (default: skip).")
 @click.option("--ie-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=False),
-              default=None, help="Image encoder quantization dtype (default: same as --dtype).")
+              default="skip", help="Image encoder quantization dtype (default: skip).")
 @click.option("--keep", multiple=True,
               help="Disable quantization on layers matching this glob pattern (repeatable).")
 def quantize(
@@ -37,7 +41,7 @@ def quantize(
     dtype: str,
     output: Path,
     vae_dtype: str,
-    te_dtype: str | None,
+    te_dtype: str,
     ie_dtype: str,
     keep: tuple[str, ...],
 ) -> None:
@@ -51,12 +55,12 @@ def quantize(
 
     # Normalize case
     dtype = dtype.upper()
-    if vae_dtype and vae_dtype.lower() != "skip":
+    if vae_dtype.lower() != "skip":
         vae_dtype = vae_dtype.upper()
-    if te_dtype:
-        te_dtype = te_dtype.upper() if te_dtype.lower() != "skip" else te_dtype
-    if ie_dtype:
-        ie_dtype = ie_dtype.upper() if ie_dtype.lower() != "skip" else ie_dtype
+    if te_dtype.lower() != "skip":
+        te_dtype = te_dtype.upper()
+    if ie_dtype.lower() != "skip":
+        ie_dtype = ie_dtype.upper()
 
     config = QuantConfig(
         model_source=model,
@@ -90,19 +94,7 @@ def components(model: str, show_all: bool) -> None:
     or a local directory path in diffusers format (with model_index.json).
     """
     model_dir = _resolve_model_dir_cached(model)
-
-    import json as _json
-
-    index_path = model_dir / "model_index.json"
-    if not index_path.exists():
-        raise click.ClickException(
-            f"No model_index.json found in {model_dir}. "
-            "The model directory must follow the HuggingFace diffusers layout."
-        )
-
-    with open(index_path) as f:
-        index = _json.load(f)
-
+    index = _load_model_index(model_dir)
     model_type = index.get("_class_name")
 
     console.print(f"\n[bold]Model:[/] {model}")
@@ -120,8 +112,6 @@ def components(model: str, show_all: bool) -> None:
 
     from kuantala.components import _classify_component
 
-    _quantizable_types = {"transformer", "unet", "vae", "text_encoder", "image_encoder"}
-
     for key, value in index.items():
         if key.startswith("_") or value is None:
             continue
@@ -132,7 +122,7 @@ def components(model: str, show_all: bool) -> None:
         if library is None and class_name is None:
             continue
         comp_type = _classify_component(key, class_name, library)
-        if not show_all and comp_type not in _quantizable_types:
+        if not show_all and comp_type not in _QUANTIZABLE_TYPES:
             continue
 
         class_label = f"{library}.{class_name}" if library and class_name else ""
@@ -146,14 +136,10 @@ def components(model: str, show_all: bool) -> None:
             for sf_path in sorted(comp_dir.glob("*.safetensors")):
                 header = _read_local_safetensors_header(sf_path)
                 total_size += sf_path.stat().st_size
+                total_params += _count_params_from_header(header)
                 for tname, meta in header.items():
-                    if tname == "__metadata__":
-                        continue
-                    dtypes.add(meta.get("dtype", "unknown"))
-                    param_count = 1
-                    for dim in meta.get("shape", []):
-                        param_count *= dim
-                    total_params += param_count
+                    if tname != "__metadata__":
+                        dtypes.add(meta.get("dtype", "unknown"))
 
         params_str = _format_params(total_params) if total_params > 0 else ""
         dtype_str = ", ".join(sorted(dtypes))
@@ -167,6 +153,18 @@ def components(model: str, show_all: bool) -> None:
         table.add_row(key, comp_type, class_label, params_str, dtype_str, size_str)
 
     console.print(table)
+
+
+def _load_model_index(model_dir: Path) -> dict:
+    """Load and return model_index.json from a model directory."""
+    index_path = model_dir / "model_index.json"
+    if not index_path.exists():
+        raise click.ClickException(
+            f"No model_index.json found in {model_dir}. "
+            "The model directory must follow the HuggingFace diffusers layout."
+        )
+    with open(index_path) as f:
+        return json.load(f)
 
 
 def _resolve_model_dir_cached(model: str) -> Path:
@@ -216,12 +214,22 @@ def _resolve_model_dir_cached(model: str) -> Path:
 
 def _read_local_safetensors_header(sf_path: Path) -> dict:
     """Read the JSON header from a local safetensors file."""
-    import json as _json
-
     with open(sf_path, "rb") as fh:
         header_size = int.from_bytes(fh.read(8), "little")
-        return _json.loads(fh.read(header_size))
+        return json.loads(fh.read(header_size))
 
+
+def _count_params_from_header(header: dict) -> int:
+    """Count total parameters from a safetensors header."""
+    total = 0
+    for name, meta in header.items():
+        if name == "__metadata__":
+            continue
+        count = 1
+        for dim in meta.get("shape", []):
+            count *= dim
+        total += count
+    return total
 
 
 @cli.command("formats")
@@ -270,23 +278,15 @@ def estimate(model: str) -> None:
     model_dir = resolve_model_path(model)
     model_info = detect_components(model_dir)
 
-    _quantizable_types = {"transformer", "unet", "text_encoder", "image_encoder"}
-
     total_params = 0
     for comp in model_info.components:
-        if comp.component_type not in _quantizable_types:
+        if comp.component_type not in _QUANTIZABLE_TYPES - {"vae"}:
             continue
 
         sf_files = sorted(comp.path.glob("*.safetensors"))
         for sf_path in sf_files:
             header = _read_local_safetensors_header(sf_path)
-            for tname, meta in header.items():
-                if tname == "__metadata__":
-                    continue
-                param_count = 1
-                for dim in meta.get("shape", []):
-                    param_count *= dim
-                total_params += param_count
+            total_params += _count_params_from_header(header)
 
     if not total_params:
         console.print("[yellow]No quantizable components found.[/]")
@@ -329,7 +329,6 @@ def config(model: str) -> None:
     or a local directory path in diffusers format (with model_index.json).
     """
     import importlib
-    import json as _json
 
     try:
         import torch  # noqa: F401
@@ -340,15 +339,7 @@ def config(model: str) -> None:
         )
 
     model_dir = _resolve_model_dir_cached(model)
-    index_path = model_dir / "model_index.json"
-    if not index_path.exists():
-        raise click.ClickException(
-            f"No model_index.json found in {model_dir}. "
-            "The model directory must follow the HuggingFace diffusers layout."
-        )
-
-    with open(index_path) as f:
-        index = _json.load(f)
+    index = _load_model_index(model_dir)
 
     model_type = index.get("_class_name")
     console.print(f"\n[bold]Model:[/] {model}")
@@ -356,8 +347,6 @@ def config(model: str) -> None:
         console.print(f"[bold]Pipeline:[/] {model_type}")
 
     from kuantala.components import _classify_component
-
-    _quantizable_types = {"transformer", "unet", "vae", "text_encoder", "image_encoder"}
 
     for key, value in index.items():
         if key.startswith("_") or value is None or not isinstance(value, list):
@@ -367,7 +356,7 @@ def config(model: str) -> None:
         if library is None and class_name is None:
             continue
         comp_type = _classify_component(key, class_name, library)
-        if comp_type not in _quantizable_types:
+        if comp_type not in _QUANTIZABLE_TYPES:
             continue
 
         config_path = model_dir / key / "config.json"
@@ -451,11 +440,7 @@ def _format_params(count: int) -> str:
 
 def _inspect_safetensors(file: Path) -> None:
     """Inspect a safetensors file."""
-    import json as _json
-
-    with open(file, "rb") as fh:
-        header_size = int.from_bytes(fh.read(8), "little")
-        header = _json.loads(fh.read(header_size))
+    header = _read_local_safetensors_header(file)
 
     file_size_mb = file.stat().st_size / (1024 * 1024)
     console.print(f"\n[bold]File:[/] {file}")
