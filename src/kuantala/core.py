@@ -84,7 +84,7 @@ def _make_calibration_fn(model: Any, component: ModelComponent, num_batches: int
 
     def forward_loop(m):
         log.info("Running calibration with random data (%d batches)...", num_batches)
-        with torch.no_grad():
+        with torch.no_grad(), torch.autocast("cuda", dtype=model_dtype):
             for _ in range(num_batches):
                 _run_random_forward(m, component.component_type, cfg, device, model_dtype)
 
