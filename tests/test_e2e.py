@@ -11,7 +11,7 @@ except ImportError:
 
 requires_hub = pytest.mark.skipif(
     not HAS_HUB,
-    reason="Requires huggingface-hub (pip install kuantala[hub])",
+    reason="Requires huggingface-hub",
 )
 
 MODEL_ID = "stable-diffusion-v1-5/stable-diffusion-v1-5"
@@ -75,7 +75,7 @@ def test_config_cli(model_dir):
 
 @requires_hub
 def test_tensors_safetensors(model_dir):
-    """Verify layers CLI command on a safetensors file."""
+    """Verify tensors CLI command on a safetensors file."""
     from click.testing import CliRunner
     from kuantala.cli import cli
 
@@ -87,69 +87,3 @@ def test_tensors_safetensors(model_dir):
     assert result.exit_code == 0
     assert "Dtype Summary" in result.output
     assert "Tensors" in result.output
-
-
-@requires_hub
-def test_tensors_gguf(model_dir, tmp_path):
-    """Verify layers CLI command on a quantized GGUF file."""
-    from click.testing import CliRunner
-    from kuantala import QuantConfig, quantize
-    from kuantala.cli import cli
-
-    config = QuantConfig(
-        model_source=str(model_dir),
-        dtype="Q8_0",
-        output_dir=tmp_path / "layers_test",
-        vae_dtype="skip",
-    )
-    output_files = quantize(config)
-    assert len(output_files) > 0
-
-    runner = CliRunner()
-    result = runner.invoke(cli, ["tensors", str(output_files[0])])
-    assert result.exit_code == 0
-    assert "GGUF" in result.output
-    assert "Dtype Summary" in result.output
-    assert "Q8_0" in result.output or "F16" in result.output
-
-
-@requires_hub
-def test_quantize_q8_0(model_dir, tmp_path):
-    """End-to-end GGUF Q8_0 quantization."""
-    from kuantala import QuantConfig, quantize
-
-    config = QuantConfig(
-        model_source=str(model_dir),
-        dtype="Q8_0",
-        output_dir=tmp_path / "q8_0",
-        vae_dtype="skip",
-    )
-    output_files = quantize(config)
-
-    assert len(output_files) >= 2  # unet + text_encoder (vae skipped)
-    for f in output_files:
-        assert f.exists()
-        assert f.suffix == ".gguf"
-        assert f.stat().st_size > 0
-
-
-@requires_hub
-def test_quantize_q4_k_mixed(model_dir, tmp_path):
-    """End-to-end GGUF Q4_K with mixed heuristics."""
-    from kuantala import QuantConfig, quantize
-
-    config = QuantConfig(
-        model_source=str(model_dir),
-        dtype="Q4_K",
-        output_dir=tmp_path / "q4km",
-        vae_dtype="skip",
-        te_dtype="Q8_0",
-        # mixed_heuristics=True by default
-    )
-    output_files = quantize(config)
-
-    assert len(output_files) >= 2
-    for f in output_files:
-        assert f.exists()
-        assert f.suffix == ".gguf"
-        assert f.stat().st_size > 0

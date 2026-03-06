@@ -14,7 +14,7 @@ from kuantala.utils import console, setup_logging
 @click.group()
 @click.option("-v", "--verbose", is_flag=True, help="Enable debug logging.")
 def cli(verbose: bool) -> None:
-    """Kuantala - Quantize diffusion models to GGUF, MXFP8, NVFP4."""
+    """Kuantala - Quantize diffusion models to FP8 and NVFP4."""
     setup_logging(verbose=verbose)
 
 
@@ -30,16 +30,8 @@ def cli(verbose: bool) -> None:
               default=None, help="Text encoder quantization dtype (default: same as --dtype).")
 @click.option("--ie-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=False),
               default=None, help="Image encoder quantization dtype (default: same as --dtype).")
-@click.option("--no-heuristics", is_flag=True,
-              help="Disable heuristic-based mixed precision (on by default).")
-@click.option("--statistics", type=click.Choice(["low", "medium", "high"], case_sensitive=False),
-              default=None, help="Preserve statistically sensitive layers (low/medium/high).")
-@click.option("--no-calibration", is_flag=True,
-              help="Disable calibration forward passes (on by default for NVIDIA backend).")
-@click.option("--calibration-data", type=click.Path(exists=True, path_type=Path), default=None,
-              help="Path to calibration data directory.")
 @click.option("--keep", multiple=True,
-              help="Manual layer override: 'pattern:dtype' (repeatable).")
+              help="Disable quantization on layers matching this glob pattern (repeatable).")
 def quantize(
     model: str,
     dtype: str,
@@ -47,10 +39,6 @@ def quantize(
     vae_dtype: str,
     te_dtype: str | None,
     ie_dtype: str,
-    no_heuristics: bool,
-    statistics: str | None,
-    no_calibration: bool,
-    calibration_data: Path | None,
     keep: tuple[str, ...],
 ) -> None:
     """Quantize a diffusion model.
@@ -60,12 +48,12 @@ def quantize(
     """
     from kuantala.core import quantize as run_quantize
 
-    # Normalize case (Click case_sensitive=False passes through original case)
+    # Normalize case
     dtype = dtype.upper()
     if vae_dtype and vae_dtype.lower() != "skip":
         vae_dtype = vae_dtype.upper()
     if te_dtype:
-        te_dtype = te_dtype.upper()
+        te_dtype = te_dtype.upper() if te_dtype.lower() != "skip" else te_dtype
     if ie_dtype:
         ie_dtype = ie_dtype.upper() if ie_dtype.lower() != "skip" else ie_dtype
 
@@ -76,10 +64,6 @@ def quantize(
         vae_dtype=vae_dtype,
         te_dtype=te_dtype,
         ie_dtype=ie_dtype,
-        heuristics=not no_heuristics,
-        statistics=statistics.lower() if statistics else None,
-        calibration=not no_calibration,
-        calibration_data=calibration_data,
         keep=list(keep),
     )
 
@@ -87,7 +71,7 @@ def quantize(
 
     console.print()
     if output_files:
-        console.print(f"[bold green]Quantization complete![/]")
+        console.print("[bold green]Quantization complete![/]")
         for f in output_files:
             size_mb = f.stat().st_size / (1024 * 1024)
             console.print(f"  {f} ({size_mb:.1f} MB)")
@@ -119,16 +103,15 @@ def components(model: str, show_all: bool) -> None:
                 "The model directory must follow the HuggingFace diffusers layout."
             )
     else:
-        # Remote: download only model_index.json
         try:
             from huggingface_hub import hf_hub_download
         except ImportError:
             raise click.ClickException(
                 f"'{model}' is not a local directory and huggingface-hub is not installed. "
-                "Install with: pip install kuantala[hub]"
+                "Install with: pip install huggingface-hub"
             )
         try:
-            index_path = Path(hf_hub_download(repo_id=model, filename="model_index.json", token=None))
+            index_path = Path(hf_hub_download(repo_id=model, filename="model_index.json"))
         except Exception:
             raise click.ClickException(
                 f"'{model}' does not contain a model_index.json on HuggingFace Hub. "
@@ -163,7 +146,7 @@ def components(model: str, show_all: bool) -> None:
             from huggingface_hub import HfApi, RepoFile
             api = HfApi()
             repo_files = [
-                f.rfilename for f in api.list_repo_tree(model, token=None, recursive=True)
+                f.rfilename for f in api.list_repo_tree(model, recursive=True)
                 if isinstance(f, RepoFile)
             ]
         except Exception:
@@ -171,10 +154,6 @@ def components(model: str, show_all: bool) -> None:
 
     _quantizable_types = {"transformer", "unet", "vae", "text_encoder", "image_encoder"}
 
-    # Collect component info, with progress for remote fetches
-    rows: list[tuple[str, str, str, int, set]] = []
-
-    # Count total safetensors files for progress
     components_to_show: list[tuple[str, str | None, str | None, str]] = []
     for key, value in index.items():
         if key.startswith("_") or value is None:
@@ -191,10 +170,10 @@ def components(model: str, show_all: bool) -> None:
         components_to_show.append((key, library, class_name, comp_type))
 
     with console.status("Fetching model info...") as status:
+        rows: list[tuple[str, str, str, int, set]] = []
         for key, library, class_name, comp_type in components_to_show:
             class_label = f"{library}.{class_name}" if library and class_name else ""
 
-            # Collect safetensors headers (local or remote)
             headers_list: list[dict] = []
             if is_local:
                 comp_dir = model_dir / key
@@ -209,7 +188,6 @@ def components(model: str, show_all: bool) -> None:
                     if header:
                         headers_list.append(header)
 
-            # Compute params and dtypes from headers
             total_params = 0
             dtypes: set[str] = set()
             for header in headers_list:
@@ -263,12 +241,10 @@ def _fetch_remote_safetensors_header(repo_id: str, filename: str) -> dict | None
         url = hf_hub_url(repo_id=repo_id, filename=filename)
         session = get_session()
         headers = utils.build_hf_headers()
-        # Read header size (first 8 bytes)
         headers["Range"] = "bytes=0-7"
         resp = session.get(url, headers=headers)
         resp.raise_for_status()
         header_size = struct.unpack("<Q", resp.content[:8])[0]
-        # Read the JSON header
         headers["Range"] = f"bytes=8-{8 + header_size - 1}"
         resp = session.get(url, headers=headers)
         resp.raise_for_status()
@@ -282,47 +258,28 @@ def _fetch_remote_safetensors_header(repo_id: str, filename: str) -> dict | None
 @cli.command("formats")
 def list_formats() -> None:
     """List available quantization formats."""
-    from kuantala.config import GGUF_TYPES, NVIDIA_TYPES
-
     table = Table(title="Available Quantization Formats", title_style="bold")
     table.add_column("Format", style="cyan")
-    table.add_column("Backend", style="green")
     table.add_column("Description")
 
     descriptions = {
-        "Q2_K": "2-bit K-means quantization",
-        "Q3_K": "3-bit K-means quantization",
-        "Q4_0": "4-bit basic quantization",
-        "Q4_K": "4-bit K-means quantization",
-        "Q5_0": "5-bit basic quantization",
-        "Q5_K": "5-bit K-means quantization",
-        "Q6_K": "6-bit K-means quantization",
-        "Q8_0": "8-bit basic quantization",
-        "MXFP8": "Microscaling FP8 (requires Hopper+)",
-        "NVFP4": "NVIDIA FP4 (requires Blackwell)",
+        "FP8": "8-bit floating point (E4M3), ~50% size reduction. Requires Hopper+ GPU.",
+        "NVFP4": "NVIDIA 4-bit floating point, ~75% size reduction. Requires Blackwell GPU.",
+        "FP16": "16-bit floating point (passthrough/conversion).",
+        "BF16": "Brain floating point 16 (passthrough/conversion).",
     }
 
-    for dtype in GGUF_TYPES:
-        table.add_row(dtype, "GGUF", descriptions.get(dtype, ""))
-    for dtype in NVIDIA_TYPES:
-        table.add_row(dtype, "NVIDIA", descriptions.get(dtype, ""))
+    for dtype in ALL_DTYPES:
+        table.add_row(dtype, descriptions.get(dtype, ""))
 
     console.print(table)
 
 
-# Approximate bits per parameter for each quantization type (including overhead)
+# Approximate bits per parameter for size estimation
 _BITS_PER_PARAM = {
-    "Q2_K": 2.6,
-    "Q3_K": 3.4,
-    "Q4_0": 4.5,
-    "Q4_K": 4.5,
-    "Q5_0": 5.5,
-    "Q5_K": 5.5,
-    "Q6_K": 6.6,
-    "Q8_0": 8.5,
-    "MXFP8": 8.0,
-    "NVFP4": 4.0,
-    "F16": 16.0,
+    "FP8": 8.5,
+    "NVFP4": 4.5,
+    "FP16": 16.0,
     "BF16": 16.0,
     "F32": 32.0,
 }
@@ -331,41 +288,27 @@ _BITS_PER_PARAM = {
 @cli.command()
 @click.argument("model", metavar="MODEL_ID_OR_PATH")
 def estimate(model: str) -> None:
-    """Estimate output sizes for common quantization formats.
+    """Estimate output sizes for each quantization format.
 
-    Shows a table of estimated file sizes for key GGUF types (Q4_K, Q5_K,
-    Q6_K, Q8_0) and NVIDIA types (MXFP8, NVFP4). Estimates are computed
-    from parameter counts — no actual quantization is performed.
-    Heuristics are always assumed on (default). VAE is skipped.
+    Estimates are computed from parameter counts — no actual quantization
+    is performed. VAE is skipped (default behavior).
 
     MODEL is a HuggingFace diffusers model ID or local directory path.
     """
     from kuantala.components import detect_components
-    from kuantala.mixed import _HEURISTIC_PATTERNS, compute_statistics_overrides
     from kuantala.model_loader import resolve_model_path
-
-    import fnmatch
-
-    estimate_dtypes = ["Q4_K", "Q5_K", "Q6_K", "Q8_0", "MXFP8", "NVFP4"]
 
     model_dir = resolve_model_path(model)
     model_info = detect_components(model_dir)
 
     _quantizable_types = {"transformer", "unet", "text_encoder", "image_encoder"}
 
-    # Gather per-component param counts and tensor names
-    components_data: list[dict] = []
+    total_params = 0
     for comp in model_info.components:
         if comp.component_type not in _quantizable_types:
             continue
 
         sf_files = sorted(comp.path.glob("*.safetensors"))
-        if not sf_files:
-            continue
-
-        # Read headers to get param counts and tensor names
-        total_params = 0
-        tensor_info: dict[str, int] = {}  # name -> param_count
         for sf_path in sf_files:
             header = _read_local_safetensors_header(sf_path)
             for tname, meta in header.items():
@@ -374,54 +317,15 @@ def estimate(model: str) -> None:
                 param_count = 1
                 for dim in meta.get("shape", []):
                     param_count *= dim
-                tensor_info[tname] = param_count
                 total_params += param_count
 
-        # Count heuristic-preserved params
-        heuristic_params = 0
-        for tname, pc in tensor_info.items():
-            for pattern in _HEURISTIC_PATTERNS:
-                if fnmatch.fnmatch(tname.lower(), pattern.lower()):
-                    heuristic_params += pc
-                    break
-
-        # Run actual statistics analysis for each level
-        stats_params = {}
-        for level in ("low", "medium", "high"):
-            overrides = compute_statistics_overrides(sf_files, level)
-            stats_params[level] = sum(tensor_info.get(t, 0) for t in overrides)
-
-        components_data.append({
-            "name": comp.name,
-            "type": comp.component_type,
-            "total_params": total_params,
-            "heuristic_params": heuristic_params,
-            "stats_params": stats_params,
-        })
-
-    if not components_data:
+    if not total_params:
         console.print("[yellow]No quantizable components found.[/]")
         return
 
-    # Print component summary
-    total_all = sum(c["total_params"] for c in components_data)
     console.print(f"\n[bold]Model:[/] {model}")
     console.print(f"[bold]Pipeline:[/] {model_info.model_type or 'unknown'}")
-    console.print(f"[bold]Total parameters (excl. VAE):[/] {_format_params(total_all)}")
-    for c in components_data:
-        console.print(f"  {c['name']}: {_format_params(c['total_params'])}")
-
-    def _estimate_size(dtype: str, comp: dict, use_stats: str | None) -> float:
-        """Estimate size in bytes for a component at a given dtype."""
-        total = comp["total_params"]
-        preserved = comp["heuristic_params"]
-        if use_stats:
-            preserved = max(preserved, preserved + comp["stats_params"].get(use_stats, 0))
-
-        quant_params = max(0, total - preserved)
-        bpp_quant = _BITS_PER_PARAM.get(dtype, 8.0)
-        bpp_f16 = _BITS_PER_PARAM["F16"]
-        return (quant_params * bpp_quant + preserved * bpp_f16) / 8
+    console.print(f"[bold]Total parameters (excl. VAE):[/] {_format_params(total_params)}")
 
     def _fmt(b: float) -> str:
         gb = b / (1024 ** 3)
@@ -429,29 +333,17 @@ def estimate(model: str) -> None:
             return f"{gb:.1f} GB"
         return f"{b / (1024 ** 2):.0f} MB"
 
-    # Build size estimate table
     table = Table(title="Estimated Output Sizes", title_style="bold")
     table.add_column("Format", style="cyan")
-    table.add_column("Heuristics", justify="right")
-    table.add_column("+ Stats Low", justify="right")
-    table.add_column("+ Stats Medium", justify="right")
-    table.add_column("+ Stats High", justify="right")
+    table.add_column("Size", justify="right")
+    table.add_column("vs FP16", justify="right")
 
-    for dtype in estimate_dtypes:
-        sizes = {}
-        for stats_level in (None, "low", "medium", "high"):
-            total_bytes = sum(
-                _estimate_size(dtype, comp, stats_level) for comp in components_data
-            )
-            sizes[stats_level] = total_bytes
-
-        table.add_row(
-            dtype,
-            _fmt(sizes[None]),
-            _fmt(sizes["low"]),
-            _fmt(sizes["medium"]),
-            _fmt(sizes["high"]),
-        )
+    fp16_bytes = total_params * _BITS_PER_PARAM["FP16"] / 8
+    for dtype in ALL_DTYPES:
+        bpp = _BITS_PER_PARAM.get(dtype, 16.0)
+        size_bytes = total_params * bpp / 8
+        pct = size_bytes / fp16_bytes * 100
+        table.add_row(dtype, _fmt(size_bytes), f"{pct:.0f}%")
 
     console.print(table)
 
@@ -495,10 +387,10 @@ def config(model: str) -> None:
         except ImportError:
             raise click.ClickException(
                 f"'{model}' is not a local directory and huggingface-hub is not installed. "
-                "Install with: pip install kuantala[hub]"
+                "Install with: pip install huggingface-hub"
             )
         try:
-            index_path = Path(hf_hub_download(repo_id=model, filename="model_index.json", token=None))
+            index_path = Path(hf_hub_download(repo_id=model, filename="model_index.json"))
         except Exception:
             raise click.ClickException(
                 f"'{model}' does not contain a model_index.json on HuggingFace Hub. "
@@ -529,13 +421,13 @@ def config(model: str) -> None:
         if comp_type not in _quantizable_types:
             continue
 
-        # Download config.json for this component if remote
         config_path = model_dir / key / "config.json"
         if not config_path.exists() and not is_local:
             try:
                 from huggingface_hub import hf_hub_download
                 config_path = Path(hf_hub_download(
-                    repo_id=model, filename=f"{key}/config.json"                ))
+                    repo_id=model, filename=f"{key}/config.json"
+                ))
             except Exception:
                 console.print(f"\n[yellow]Could not fetch config for {key}[/]")
                 continue
@@ -543,7 +435,6 @@ def config(model: str) -> None:
         if not config_path.exists():
             continue
 
-        # Instantiate model from config on meta device (no memory allocation)
         full_class = f"{library}.{class_name}"
         try:
             import torch
@@ -560,12 +451,9 @@ def config(model: str) -> None:
             console.print(f"\n[yellow]Could not load {full_class} for '{key}': {e}[/]")
             continue
 
-        # Count parameters
         total_params = sum(p.numel() for p in model_instance.parameters())
 
         console.print(f"\n[bold cyan]{key}[/] [dim]({full_class}, {_format_params(total_params)} params)[/]")
-
-        # Print module tree
         _print_module_tree(model_instance, prefix="")
 
 
@@ -582,12 +470,10 @@ def _print_module_tree(module: object, prefix: str) -> None:
         connector = "\u2514\u2500 " if is_last else "\u251c\u2500 "
         child_prefix = prefix + ("   " if is_last else "\u2502  ")
 
-        # Summarize this module
         child_type = type(child).__name__
         param_count = sum(p.numel() for p in child.parameters())
         param_str = f" ({_format_params(param_count)})" if param_count > 0 else ""
 
-        # For leaf-like modules (Linear, Conv, Norm), show shape info
         extra = ""
         if isinstance(child, nn.Linear):
             extra = f" in={child.in_features}, out={child.out_features}"
@@ -597,23 +483,20 @@ def _print_module_tree(module: object, prefix: str) -> None:
             extra = f" {list(child.normalized_shape)}" if hasattr(child, 'normalized_shape') else ""
 
         console.print(f"{prefix}{connector}[cyan]{name}[/] [dim]{child_type}{extra}{param_str}[/]")
-
         _print_module_tree(child, child_prefix)
 
 
 @cli.command()
 @click.argument("file", metavar="FILE_PATH", type=click.Path(exists=True, path_type=Path))
 def tensors(file: Path) -> None:
-    """Show tensors in a safetensors or GGUF file.
+    """Show tensors in a safetensors file.
 
     Shows per-tensor name, dtype, shape, and parameter count.
     """
-    if file.suffix == ".gguf":
-        _inspect_gguf(file)
-    elif file.suffix == ".safetensors":
+    if file.suffix == ".safetensors":
         _inspect_safetensors(file)
     else:
-        raise click.ClickException(f"Unsupported file format: {file.suffix}. Use .safetensors or .gguf")
+        raise click.ClickException(f"Unsupported file format: {file.suffix}. Use .safetensors")
 
 
 def _format_params(count: int) -> str:
@@ -640,11 +523,10 @@ def _inspect_safetensors(file: Path) -> None:
     console.print(f"[bold]Format:[/] safetensors")
     console.print(f"[bold]Size:[/] {file_size_mb:.1f} MB")
 
-    # Collect tensor info
     dtype_counts: dict[str, int] = {}
     dtype_params: dict[str, int] = {}
     total_params = 0
-    tensors: list[tuple[str, str, list[int], int]] = []
+    tensor_list: list[tuple[str, str, list[int], int]] = []
 
     for name, meta in header.items():
         if name == "__metadata__":
@@ -657,51 +539,15 @@ def _inspect_safetensors(file: Path) -> None:
         total_params += param_count
         dtype_counts[dtype] = dtype_counts.get(dtype, 0) + 1
         dtype_params[dtype] = dtype_params.get(dtype, 0) + param_count
-        tensors.append((name, dtype, shape, param_count))
+        tensor_list.append((name, dtype, shape, param_count))
 
-    _print_layers_and_summary(tensors, dtype_counts, dtype_params, total_params)
-
-
-def _inspect_gguf(file: Path) -> None:
-    """Inspect a GGUF file."""
-    try:
-        from gguf import GGUFReader
-    except ImportError:
-        raise click.ClickException("gguf package not installed. Install with: pip install kuantala[gguf]")
-
-    reader = GGUFReader(str(file))
-
-    file_size_mb = file.stat().st_size / (1024 * 1024)
-    console.print(f"\n[bold]File:[/] {file}")
-    console.print(f"[bold]Format:[/] GGUF")
-    console.print(f"[bold]Size:[/] {file_size_mb:.1f} MB")
-
-    # Collect tensor info
-    dtype_counts: dict[str, int] = {}
-    dtype_params: dict[str, int] = {}
-    total_params = 0
-    tensors: list[tuple[str, str, list[int], int]] = []
-
-    for tensor in reader.tensors:
-        name = tensor.name
-        dtype = str(tensor.tensor_type).split(".")[-1]
-        shape = list(tensor.shape)
-        param_count = 1
-        for dim in shape:
-            param_count *= dim
-        total_params += param_count
-        dtype_counts[dtype] = dtype_counts.get(dtype, 0) + 1
-        dtype_params[dtype] = dtype_params.get(dtype, 0) + param_count
-        tensors.append((name, dtype, shape, param_count))
-
-    _print_layers_and_summary(tensors, dtype_counts, dtype_params, total_params)
+    _print_layers_and_summary(tensor_list, dtype_counts, dtype_params, total_params)
 
 
 def _natural_sort_key(name: str) -> list:
     """Sort key that handles numeric parts naturally (block.2 < block.10)."""
     import re
     return [int(part) if part.isdigit() else part.lower() for part in re.split(r'(\d+)', name)]
-
 
 
 def _print_layers_and_summary(
@@ -711,7 +557,6 @@ def _print_layers_and_summary(
     total_params: int,
 ) -> None:
     """Print tensor detail table followed by dtype summary."""
-    # Sort tensors naturally (numeric-aware) for consistent ordering
     tensors = sorted(tensors, key=lambda t: _natural_sort_key(t[0]))
 
     table = Table(title="Tensors", title_style="bold")
@@ -727,7 +572,6 @@ def _print_layers_and_summary(
 
     console.print(table)
 
-    # Dtype summary
     summary = Table(title="Dtype Summary", title_style="bold")
     summary.add_column("Dtype", style="cyan")
     summary.add_column("Tensors", justify="right")

@@ -1,58 +1,58 @@
 # Kuantala
 
-Quantize diffusion models (Wan2.x, FLUX, Stable Diffusion, etc.) to GGUF, MXFP8, and NVFP4 formats.
+Quantize diffusion models (Wan2.x, FLUX, Stable Diffusion, etc.) to FP8 and NVFP4 formats using NVIDIA modelopt.
 
 ## Installation
 
 ```bash
-# GGUF quantization (no torch required)
-pip install kuantala[gguf]
-
-# With HuggingFace Hub download support
-pip install kuantala[gguf,hub]
-
-# NVIDIA MXFP8/NVFP4
 # First install PyTorch with CUDA from https://pytorch.org
 pip install torch --index-url https://download.pytorch.org/whl/cu130
-pip install kuantala[nvidia]
 
-# Optional (Windows only): install Triton for faster quantization simulations
-pip install triton-windows
-
-# Everything (hub, gguf, nvidia)
-pip install kuantala[all]
+pip install kuantala
 ```
 
-For local models only, `huggingface-hub` is not needed. PyTorch is not declared as a dependency since it requires a platform-specific CUDA build — install it manually before `kuantala[nvidia]` or `kuantala[all]`.
-
-> **Note:** The NVIDIA backend requires Python ≤ 3.12 due to `nvidia-modelopt` package constraints. The GGUF backend works with any Python version.
+Requires Python ≤ 3.12 due to `nvidia-modelopt` constraints.
 
 Kuantala requires models in **diffusers format** (with `model_index.json`). If a model has both a raw and a diffusers variant on HuggingFace, use the diffusers one (typically suffixed with `-Diffusers`).
 
 ## Quick Start
 
 ```bash
-# Quantize to GGUF Q4_K
-kuantala quantize Wan-AI/Wan2.1-I2V-14B-Diffusers --dtype Q4_K --output ./wan-q4
+# Quantize to FP8 (~50% size, ~2x inference speed on Hopper+/Blackwell)
+kuantala quantize Wan-AI/Wan2.1-I2V-14B-Diffusers --dtype FP8 --output ./wan-fp8
 
-# Quantize to NVIDIA MXFP8
-kuantala quantize ./local-model --dtype MXFP8 --output ./model-fp8
+# Quantize to NVFP4 (~75% size, fastest on Blackwell)
+kuantala quantize ./local-model --dtype NVFP4 --output ./model-fp4
+
+# Convert FP32 model to FP16
+kuantala quantize ./old-model --dtype FP16 --output ./model-fp16
 
 # Inspect model components
 kuantala components Wan-AI/Wan2.1-I2V-14B-Diffusers
 
-# Show model architecture from its config (requires torch + diffusers)
+# Show model architecture from config (no weights downloaded)
 kuantala config Wan-AI/Wan2.1-I2V-14B-Diffusers
 
 # Estimate output sizes for all formats
 kuantala estimate Wan-AI/Wan2.1-I2V-14B-Diffusers
 
 # Inspect tensors in a quantized file
-kuantala tensors ./output/transformer-Q4_K.gguf
+kuantala tensors ./output/transformer-FP8.safetensors
 
 # List available formats
 kuantala formats
 ```
+
+## How It Works
+
+Kuantala uses NVIDIA modelopt to quantize diffusion model components:
+
+1. **Load** each component (transformer, text encoder, etc.) via diffusers/transformers
+2. **Quantize** with modelopt — inserts quantizer nodes and runs calibration forward passes with random data to determine optimal scale factors
+3. **Compress** — converts fake-quantized weights to real low-precision (FP8 or packed FP4)
+4. **Save** as safetensors with actual quantized weights
+
+The output files are genuinely smaller and load into VRAM at low precision. FP8 uses `float8_e4m3fn` tensors, NVFP4 uses packed `uint8` with block-wise FP8 scales.
 
 ## CLI Reference
 
@@ -64,17 +64,13 @@ kuantala quantize [OPTIONS] MODEL
 
 | Option | Description |
 |--------|-------------|
-| `MODEL` | HuggingFace diffusers model ID (e.g. `Wan-AI/Wan2.1-I2V-14B-Diffusers`) or local directory path in diffusers format (required) |
-| `-d, --dtype` | Target quantization type (required). GGUF: `Q2_K`, `Q3_K`, `Q4_0`, `Q4_K`, `Q5_0`, `Q5_K`, `Q6_K`, `Q8_0`. NVIDIA: `MXFP8`, `NVFP4` |
+| `MODEL` | HuggingFace diffusers model ID or local directory path (required) |
+| `-d, --dtype` | Target format: `FP8`, `NVFP4`, `FP16`, `BF16` (required) |
 | `-o, --output` | Output directory (default: `./output`) |
-| `--vae-dtype` | VAE quantization dtype (default: `skip`). Accepts any dtype above plus `F16`, `F32`, `BF16`, `skip` |
-| `--te-dtype` | Text encoder quantization dtype (default: same as `--dtype`). Same choices as `--vae-dtype` |
-| `--ie-dtype` | Image encoder quantization dtype (default: same as `--dtype`). Same choices as `--vae-dtype` |
-| `--no-heuristics` | Disable heuristic-based mixed precision (on by default) |
-| `--statistics LEVEL` | Preserve statistically sensitive layers: `low`, `medium`, or `high` (off by default) |
-| `--no-calibration` | Disable calibration forward passes (on by default for NVIDIA backend) |
-| `--calibration-data PATH` | Path to calibration data directory |
-| `--keep TEXT` | Manual layer override: `pattern:dtype` (repeatable) |
+| `--vae-dtype` | VAE dtype (default: `skip`). Same choices as `--dtype` plus `skip` |
+| `--te-dtype` | Text encoder dtype (default: same as `--dtype`) |
+| `--ie-dtype` | Image encoder dtype (default: same as `--dtype`) |
+| `--keep PATTERN` | Disable quantization on layers matching this glob pattern (repeatable) |
 
 ### `kuantala components`
 
@@ -84,31 +80,31 @@ kuantala components [OPTIONS] MODEL
 
 | Option | Description |
 |--------|-------------|
-| `MODEL` | HuggingFace diffusers model ID (e.g. `Wan-AI/Wan2.1-I2V-14B-Diffusers`) or local directory path in diffusers format (required) |
+| `MODEL` | HuggingFace diffusers model ID or local directory path (required) |
 
 ### `kuantala estimate`
 
 ```
-kuantala estimate [OPTIONS] MODEL
+kuantala estimate MODEL
 ```
 
-| Option | Description |
-|--------|-------------|
-| `MODEL` | HuggingFace diffusers model ID (e.g. `Wan-AI/Wan2.1-I2V-14B-Diffusers`) or local directory path in diffusers format (required) |
-
-Estimates output file sizes for common quantization formats: GGUF (Q4_K, Q5_K, Q6_K, Q8_0) and NVIDIA (MXFP8, NVFP4). Estimates are computed from parameter counts — no actual quantization is performed. Shows columns for heuristics-only and heuristics + statistics at each level (low/medium/high). VAE is excluded (skipped by default). Reads actual weight values to compute statistics, so the model must be downloaded.
+Estimates output sizes for all formats from parameter counts. No actual quantization is performed. VAE is excluded (skipped by default). The model must be downloaded locally.
 
 ### `kuantala config`
 
 ```
-kuantala config [OPTIONS] MODEL
+kuantala config MODEL
 ```
 
-| Option | Description |
-|--------|-------------|
-| `MODEL` | HuggingFace diffusers model ID (e.g. `Wan-AI/Wan2.1-I2V-14B-Diffusers`) or local directory path in diffusers format (required) |
+Shows model architecture from config: full module hierarchy with layer types, shapes, and parameter counts. Only downloads `config.json` files — no model weights are downloaded.
 
-Shows the model architecture from its config: full module hierarchy with layer types, shapes, and parameter counts. Only downloads `config.json` files — no model weights are downloaded or loaded. Requires `torch` and `diffusers`/`transformers` to be installed.
+### `kuantala tensors`
+
+```
+kuantala tensors FILE_PATH
+```
+
+Shows per-tensor detail: name, dtype, shape, and parameter count. Also shows a dtype summary.
 
 ### `kuantala formats`
 
@@ -116,19 +112,7 @@ Shows the model architecture from its config: full module hierarchy with layer t
 kuantala formats
 ```
 
-Lists all available quantization formats with their backend and description.
-
-### `kuantala tensors`
-
-```
-kuantala tensors [OPTIONS] FILE_PATH
-```
-
-| Option | Description |
-|--------|-------------|
-| `FILE_PATH` | Path to a `.safetensors` or `.gguf` file (required) |
-
-Shows per-tensor detail: name, dtype, shape, and parameter count. Also shows a dtype summary with parameter distribution.
+Lists available quantization formats with descriptions.
 
 ### Global Options
 
@@ -147,61 +131,30 @@ Kuantala detects and quantizes the following component types from diffusers mode
 | Image encoder | `--ie-dtype` | same as `--dtype` |
 | VAE | `--vae-dtype` | `skip` |
 
-Schedulers, tokenizers, and other non-neural components are always skipped. VAE is skipped by default because quantizing it below FP16 causes visible artifacts.
+Schedulers, tokenizers, and other non-neural components are always skipped. VAE is skipped by default because quantizing it causes visible artifacts.
 
 ```bash
 kuantala quantize black-forest-labs/FLUX.1-dev \
-    --dtype Q4_K \
+    --dtype FP8 \
     --vae-dtype skip \
-    --te-dtype Q8_0
+    --te-dtype FP16
 ```
 
-## Mixed Quantization
+## Layer-Level Control
 
-Kuantala supports three methods for mixed-precision quantization, which can be combined. When multiple methods are active, a layer is preserved at higher precision if *any* method flags it. Manual `--keep` rules always take highest priority.
-
-### Heuristics (on by default)
-
-Preserves known-sensitive layer types at F16 based on diffusion model research: normalization layers, attention QKV projections, timestep embeddings, and input/output projections. These layers are small but disproportionately affect output quality.
-
-Disable with `--no-heuristics`.
-
-### Statistics (off by default)
-
-Analyzes the actual weight values in each layer to find statistical outliers — layers with unusually high outlier ratios (many weights far from the mean) are most harmed by quantization and get preserved at F16.
-
-The sensitivity level controls the threshold:
-
-| Level | Threshold | Effect |
-|-------|-----------|--------|
-| `low` | > 2.5 std devs | Only extreme outliers, fewest layers preserved |
-| `medium` | > 2.0 std devs | Clear outliers |
-| `high` | > 1.5 std devs | Moderate outliers, most layers preserved |
-
-Enable with `--statistics medium` (or `low`/`high`).
-
-### Calibration (on by default, NVIDIA backend only)
-
-Runs forward passes with random data through the model so that quantizers can observe actual activation ranges and set optimal scale factors. This doesn't decide *which* layers to preserve — it improves *how* the quantized layers are scaled.
-
-Not applicable to GGUF (which is weight-only quantization with scales computed directly from weight values). Disable with `--no-calibration`.
-
-### Examples
+Use `--keep` to disable quantization on specific layers by glob pattern. Matched layers stay at their original precision (FP16/BF16):
 
 ```bash
-# Default: heuristics + calibration (NVIDIA) enabled
-kuantala quantize model --dtype MXFP8
+# Keep normalization layers unquantized
+kuantala quantize model --dtype FP8 --keep "*.norm*"
 
-# Add statistics-based layer preservation
-kuantala quantize model --dtype Q4_K --statistics medium
+# Keep attention output projections unquantized
+kuantala quantize model --dtype NVFP4 --keep "*.attn.to_out*"
 
-# Disable defaults if needed
-kuantala quantize model --dtype Q4_K --no-heuristics
-kuantala quantize model --dtype MXFP8 --no-calibration
-
-# Manual overrides (always highest priority)
-kuantala quantize model --dtype Q4_K \
-    --keep "norm_*:F16" --keep "attn_*:Q8_0"
+# Multiple patterns
+kuantala quantize model --dtype FP8 \
+    --keep "*.norm*" \
+    --keep "*.time_embed*"
 ```
 
 ## Python API
@@ -212,37 +165,22 @@ from kuantala import QuantConfig, quantize
 
 config = QuantConfig(
     model_source="Wan-AI/Wan2.1-I2V-14B-Diffusers",
-    dtype="Q4_K",
+    dtype="FP8",
     vae_dtype="skip",
     output_dir=Path("./output"),
-    # heuristics=True and calibration=True by default
-    statistics="medium",
-    keep=["norm_*:F16"],
+    keep=["*.norm*"],
 )
 output_files = quantize(config)
 ```
 
 ## Supported Formats
 
-### GGUF (for llama.cpp / stable-diffusion.cpp)
-
-| Format | Description |
-|--------|-------------|
-| Q2_K   | 2-bit K-means quantization |
-| Q3_K   | 3-bit K-means quantization |
-| Q4_0   | 4-bit basic quantization |
-| Q4_K   | 4-bit K-means quantization |
-| Q5_0   | 5-bit basic quantization |
-| Q5_K   | 5-bit K-means quantization |
-| Q6_K   | 6-bit K-means quantization |
-| Q8_0   | 8-bit basic quantization |
-
-### NVIDIA (requires torch + nvidia-modelopt)
-
-| Format | Description |
-|--------|-------------|
-| MXFP8  | Microscaling FP8 (requires Hopper+) |
-| NVFP4  | NVIDIA FP4 (requires Blackwell) |
+| Format | Description | Size vs FP16 | GPU Requirement |
+|--------|-------------|--------------|-----------------|
+| FP8 | 8-bit floating point (E4M3) | ~50% | Hopper+ (RTX 4000+) |
+| NVFP4 | NVIDIA 4-bit floating point | ~25% | Blackwell (RTX 5000+) |
+| FP16 | 16-bit float (passthrough) | 100% | Any |
+| BF16 | Brain float 16 (passthrough) | 100% | Ampere+ |
 
 ## Development
 

@@ -16,8 +16,8 @@ def test_formats():
     runner = CliRunner()
     result = runner.invoke(cli, ["formats"])
     assert result.exit_code == 0
-    assert "Q4_K" in result.output
-    assert "MXFP8" in result.output
+    assert "FP8" in result.output
+    assert "NVFP4" in result.output
 
 
 def test_quantize_missing_dtype():
@@ -46,7 +46,7 @@ def test_config_nonexistent_model():
 
 def test_tensors_nonexistent_file():
     runner = CliRunner()
-    result = runner.invoke(cli, ["tensors", "/nonexistent/file.gguf"])
+    result = runner.invoke(cli, ["tensors", "/nonexistent/file.safetensors"])
     assert result.exit_code != 0
 
 

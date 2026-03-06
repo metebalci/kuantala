@@ -4,24 +4,25 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kuantala"
-version = "0.1.0"
-description = "Quantize diffusion models to GGUF, MXFP8, and NVFP4 formats"
-requires-python = ">=3.10"
+version = "0.2.0"
+description = "Quantize diffusion models to FP8 and NVFP4 formats"
+requires-python = ">=3.10,<3.13"
 license = "GPL-3.0-or-later"
 dependencies = [
     "click>=8.0",
     "safetensors>=0.4",
     "rich>=13.0",
+    "huggingface-hub",
+    "diffusers",
+    "accelerate",
+    # nvidia-modelopt is pinned because each version requires a specific transformers range.
+    # When updating modelopt, check its [hf] extra for the compatible transformers version.
+    "transformers>=4.53,<5.0",
+    "nvidia-modelopt==0.41.0",
 ]
 
 [project.optional-dependencies]
-hub = ["huggingface-hub"]
-gguf = ["gguf", "numpy"]
-# nvidia-modelopt is pinned because each version requires a specific transformers range.
-# When updating modelopt, check its [hf] extra for the compatible transformers version.
-nvidia = ["diffusers", "accelerate", "transformers>=4.53,<5.0", "nvidia-modelopt==0.41.0"]
-all = ["kuantala[hub,gguf,nvidia]"]
-dev = ["pytest", "build", "twine", "kuantala[all]"]
+dev = ["pytest", "build", "twine"]
 
 [project.scripts]
 kuantala = "kuantala.cli:cli"

@@ -6,27 +6,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
-GGUF_TYPES = [
-    "Q2_K", "Q3_K",
-    "Q4_0", "Q4_K",
-    "Q5_0", "Q5_K",
-    "Q6_K", "Q8_0",
-]
+QUANT_DTYPES = ["FP8", "NVFP4"]
 
-NVIDIA_TYPES = ["MXFP8", "NVFP4"]
+PASSTHROUGH_DTYPES = ["FP16", "BF16"]
 
-ALL_DTYPES = GGUF_TYPES + NVIDIA_TYPES
+ALL_DTYPES = QUANT_DTYPES + PASSTHROUGH_DTYPES
 
-# Types allowed as per-component overrides (including skip and passthrough)
-COMPONENT_DTYPES = ALL_DTYPES + ["F16", "F32", "BF16", "skip"]
+# Types allowed as per-component overrides (including skip)
+COMPONENT_DTYPES = ALL_DTYPES + ["skip"]
 
 
-def is_gguf_dtype(dtype: str) -> bool:
-    return dtype in GGUF_TYPES
+def is_quant_dtype(dtype: str) -> bool:
+    return dtype in QUANT_DTYPES
 
 
-def is_nvidia_dtype(dtype: str) -> bool:
-    return dtype in NVIDIA_TYPES
+def is_passthrough_dtype(dtype: str) -> bool:
+    return dtype in PASSTHROUGH_DTYPES
 
 
 @dataclass
@@ -42,13 +37,11 @@ class QuantConfig:
     te_dtype: str | None = None
     ie_dtype: str | None = None
 
-    # Mixed quantization (heuristics and calibration on by default)
-    heuristics: bool = True
-    statistics: str | None = None  # "low", "medium", "high", or None (off)
-    calibration: bool = True  # only effective for NVIDIA backend
-    calibration_data: Path | None = None
+    # Calibration (random forward passes to determine optimal scale factors)
+    calibration: bool = True
+    calib_size: int = 4  # number of calibration batches
 
-    # Manual layer overrides: ["pattern:dtype", ...]
+    # Manual layer overrides: disable quantization on matched layer names
     keep: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -64,7 +57,3 @@ class QuantConfig:
                     f"Unknown {field_name} {value!r}. "
                     f"Choose from: {', '.join(COMPONENT_DTYPES)}"
                 )
-
-    @property
-    def backend_name(self) -> str:
-        return "nvidia" if is_nvidia_dtype(self.dtype) else "gguf"
