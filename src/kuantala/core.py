@@ -22,6 +22,8 @@ def _resolve_component_dtype(
         dtype = config.vae_dtype
     elif component.component_type == "text_encoder":
         dtype = config.te_dtype
+    elif component.component_type == "image_encoder":
+        dtype = config.ie_dtype
     else:
         dtype = config.dtype
 

@@ -28,6 +28,8 @@ def cli(verbose: bool) -> None:
               default="skip", help="VAE quantization dtype (default: skip).")
 @click.option("--te-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=False),
               default=None, help="Text encoder quantization dtype (default: same as --dtype).")
+@click.option("--ie-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=False),
+              default=None, help="Image encoder quantization dtype (default: same as --dtype).")
 @click.option("--mixed-heuristics", is_flag=True,
               help="Preserve known-sensitive layers at higher precision.")
 @click.option("--mixed-statistics", type=int, default=None, metavar="N",
@@ -46,6 +48,7 @@ def quantize(
     output: Path,
     vae_dtype: str,
     te_dtype: str | None,
+    ie_dtype: str,
     mixed_heuristics: bool,
     mixed_statistics: int | None,
     mixed_calibration: bool,
@@ -66,6 +69,8 @@ def quantize(
         vae_dtype = vae_dtype.upper()
     if te_dtype:
         te_dtype = te_dtype.upper()
+    if ie_dtype:
+        ie_dtype = ie_dtype.upper() if ie_dtype.lower() != "skip" else ie_dtype
 
     config = QuantConfig(
         model_source=model,
@@ -73,6 +78,7 @@ def quantize(
         output_dir=output,
         vae_dtype=vae_dtype,
         te_dtype=te_dtype,
+        ie_dtype=ie_dtype,
         mixed_heuristics=mixed_heuristics,
         mixed_statistics=mixed_statistics,
         mixed_calibration=mixed_calibration,
@@ -118,12 +124,31 @@ def info(model: str, hf_token: str | None) -> None:
     table.add_column("Name", style="cyan")
     table.add_column("Type", style="green")
     table.add_column("Class")
-    table.add_column("Safetensors Files", justify="right")
+    table.add_column("Parameters", justify="right")
+    table.add_column("Dtype", justify="right")
+
+    from safetensors import safe_open
 
     for comp in model_info.components:
-        n_files = len(list(comp.path.glob("*.safetensors")))
         class_label = f"{comp.library}.{comp.class_name}" if comp.library and comp.class_name else ""
-        table.add_row(comp.name, comp.component_type, class_label, str(n_files))
+        total_params = 0
+        dtypes: set[str] = set()
+        for sf_path in sorted(comp.path.glob("*.safetensors")):
+            with safe_open(str(sf_path), framework="numpy") as f:
+                for name in f.keys():
+                    tensor = f.get_tensor(name)
+                    total_params += tensor.size
+                    dtypes.add(str(tensor.dtype))
+
+        if total_params >= 1_000_000_000:
+            params_str = f"{total_params / 1_000_000_000:.1f}B"
+        elif total_params >= 1_000_000:
+            params_str = f"{total_params / 1_000_000:.0f}M"
+        else:
+            params_str = f"{total_params / 1_000:.0f}K"
+
+        dtype_str = ", ".join(sorted(dtypes))
+        table.add_row(comp.name, comp.component_type, class_label, params_str, dtype_str)
 
     console.print(table)
 

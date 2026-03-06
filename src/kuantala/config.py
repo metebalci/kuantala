@@ -40,6 +40,7 @@ class QuantConfig:
     # Per-component overrides ("skip" = don't touch, None = use main dtype)
     vae_dtype: str | None = "skip"
     te_dtype: str | None = None
+    ie_dtype: str | None = None
 
     # Mixed quantization
     mixed_heuristics: bool = False
@@ -60,7 +61,7 @@ class QuantConfig:
                 f"Unknown dtype {self.dtype!r}. "
                 f"Choose from: {', '.join(ALL_DTYPES)}"
             )
-        for field_name, value in [("vae_dtype", self.vae_dtype), ("te_dtype", self.te_dtype)]:
+        for field_name, value in [("vae_dtype", self.vae_dtype), ("te_dtype", self.te_dtype), ("ie_dtype", self.ie_dtype)]:
             if value is not None and value not in COMPONENT_DTYPES:
                 raise ValueError(
                     f"Unknown {field_name} {value!r}. "

@@ -84,8 +84,8 @@ _CLASS_MAP: dict[str, str] = {
     "diffusers.UniPCMultistepScheduler": "scheduler",
     "diffusers.FlowMatchHeunDiscreteScheduler": "scheduler",
     # Image encoders
-    "transformers.CLIPVisionModelWithProjection": "other",
-    "transformers.SiglipVisionModel": "other",
+    "transformers.CLIPVisionModelWithProjection": "image_encoder",
+    "transformers.SiglipVisionModel": "image_encoder",
 }
 
 

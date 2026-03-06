@@ -60,6 +60,7 @@ kuantala quantize [OPTIONS] MODEL
 | `-o, --output` | Output directory (default: `./output`) |
 | `--vae-dtype` | VAE quantization dtype (default: `skip`). Accepts any dtype above plus `F16`, `F32`, `BF16`, `skip` |
 | `--te-dtype` | Text encoder quantization dtype (default: same as `--dtype`). Same choices as `--vae-dtype` |
+| `--ie-dtype` | Image encoder quantization dtype (default: same as `--dtype`). Same choices as `--vae-dtype` |
 | `--mixed-heuristics` | Preserve known-sensitive layers (norms, attention QKV, timestep embeddings) at higher precision |
 | `--mixed-statistics N` | Preserve top N% most sensitive layers by weight statistics |
 | `--mixed-calibration` | Use calibration forward passes to find sensitive layers (NVIDIA backend only) |
@@ -94,7 +95,16 @@ Lists all available quantization formats with their backend and description.
 
 ## Per-Component Control
 
-VAE is skipped by default (quantizing below FP16 causes visible artifacts).
+Kuantala detects and quantizes the following component types from diffusers models:
+
+| Component | Flag | Default |
+|-----------|------|---------|
+| Transformer / UNet | `--dtype` | required |
+| Text encoder | `--te-dtype` | same as `--dtype` |
+| Image encoder | `--ie-dtype` | same as `--dtype` |
+| VAE | `--vae-dtype` | `skip` |
+
+Schedulers, tokenizers, and other non-neural components are always skipped. VAE is skipped by default because quantizing it below FP16 causes visible artifacts.
 
 ```bash
 kuantala quantize black-forest-labs/FLUX.1-dev \
