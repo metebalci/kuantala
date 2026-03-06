@@ -101,7 +101,7 @@ kuantala quantize [OPTIONS] MODEL
 | `-o, --output` | Output directory (default: `./output`) |
 | `--vae-dtype` | VAE dtype (default: `skip`). Same choices as `--dtype` plus `skip` |
 | `--te-dtype` | Text encoder dtype (default: `skip`) |
-| `--ie-dtype` | Image encoder dtype (default: same as `--dtype`) |
+| `--ie-dtype` | Image encoder dtype (default: `skip`) |
 | `--keep PATTERN` | Disable quantization on layers matching this glob pattern (repeatable) |
 
 ### `kuantala components`
@@ -172,7 +172,7 @@ Kuantala detects and quantizes the following component types from diffusers mode
 |-----------|------|---------|
 | Transformer / UNet | `--dtype` | required |
 | Text encoder | `--te-dtype` | `skip` |
-| Image encoder | `--ie-dtype` | same as `--dtype` |
+| Image encoder | `--ie-dtype` | `skip` |
 | VAE | `--vae-dtype` | `skip` |
 
 Schedulers, tokenizers, and other non-neural components are always skipped. VAE is skipped by default because quantizing it causes visible artifacts.
@@ -192,15 +192,42 @@ Use `--keep` to disable quantization on specific layers by glob pattern. Matched
 
 ### Wan 2.2 I2V 14B
 
+Based on [NVIDIA modelopt's example settings](https://github.com/NVIDIA/Model-Optimizer/blob/main/examples/diffusers/quantization/utils.py):
+
 ```bash
-kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype FP8 \
+# NVFP4 (recommended for Blackwell GPUs)
+kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4 \
+    --keep "*patch_embedding*" \
     --keep "*condition_embedder*" \
-    --keep "*patch_embedding*"
+    --keep "*proj_out*" \
+    --keep "*blocks.0.*" \
+    --keep "*blocks.1.*" \
+    --keep "*blocks.2.*" \
+    --keep "*blocks.37.*" \
+    --keep "*blocks.38.*" \
+    --keep "*blocks.39.*"
+
+# Convert for ComfyUI
+kuantala convert ./output/transformer-NVFP4.safetensors --remap-keys wan
+
+# FP8 (for Hopper+ GPUs)
+kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype FP8 \
+    --keep "*patch_embedding*" \
+    --keep "*condition_embedder*" \
+    --keep "*proj_out*" \
+    --keep "*blocks.0.*" \
+    --keep "*blocks.1.*" \
+    --keep "*blocks.2.*" \
+    --keep "*blocks.37.*" \
+    --keep "*blocks.38.*" \
+    --keep "*blocks.39.*"
 ```
 
 Key layers kept at full precision:
-- `condition_embedder` — time embedding, text projection, conditioning (232M params)
 - `patch_embedding` — input Conv3d
+- `condition_embedder` — time embedding, text projection, conditioning
+- `proj_out` — output projection
+- First/last 3 blocks — most sensitive transformer layers
 
 Norms (`FP32LayerNorm`, `RMSNorm`) and embeddings (`WanRotaryPosEmbed`) are already kept at original precision by modelopt.
 
@@ -212,9 +239,13 @@ from kuantala import QuantConfig, quantize
 
 config = QuantConfig(
     model_source="Wan-AI/Wan2.2-I2V-A14B-Diffusers",
-    dtype="FP8",
+    dtype="NVFP4",
     output_dir=Path("./output"),
-    keep=["*condition_embedder*", "*patch_embedding*"],
+    keep=[
+        "*patch_embedding*", "*condition_embedder*", "*proj_out*",
+        "*blocks.0.*", "*blocks.1.*", "*blocks.2.*",
+        "*blocks.37.*", "*blocks.38.*", "*blocks.39.*",
+    ],
 )
 output_files = quantize(config)
 ```

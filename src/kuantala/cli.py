@@ -485,6 +485,11 @@ def _inspect_safetensors(file: Path) -> None:
     console.print(f"[bold]Format:[/] safetensors")
     console.print(f"[bold]Size:[/] {file_size_mb:.1f} MB")
 
+    metadata = header.pop("__metadata__", {})
+    if metadata:
+        for k, v in metadata.items():
+            console.print(f"[bold]{k}:[/] {v}")
+
     dtype_counts: dict[str, int] = {}
     dtype_params: dict[str, int] = {}
     total_params = 0

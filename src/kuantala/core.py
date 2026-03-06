@@ -213,6 +213,24 @@ def _disable_quantizers_by_pattern(model: torch.nn.Module, patterns: list[str]) 
     log.info("Disabled quantizers on layers matching: %s", patterns)
 
 
+def _build_metadata(component: ModelComponent, dtype: str, config: QuantConfig) -> dict[str, str]:
+    """Build safetensors metadata recording how the file was produced."""
+    import json
+    meta: dict[str, str] = {
+        "quantizer": "kuantala",
+        "dtype": dtype,
+        "model_source": config.model_source,
+        "component": component.name,
+    }
+    if component.class_name:
+        meta["class_name"] = component.class_name
+    if component.library:
+        meta["library"] = component.library
+    if config.keep:
+        meta["keep"] = json.dumps(config.keep)
+    return meta
+
+
 def _quantize_component(
     component: ModelComponent,
     dtype: str,
@@ -225,12 +243,14 @@ def _quantize_component(
 
     model = _load_model(component)
 
+    metadata = _build_metadata(component, dtype, config)
+
     # Passthrough: just cast and save
     if is_passthrough_dtype(dtype):
         target_dtype = _TORCH_DTYPES[dtype]
         model = model.to(target_dtype)
         state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
-        save_file(state_dict, str(output_file))
+        save_file(state_dict, str(output_file), metadata=metadata)
         file_size_mb = output_file.stat().st_size / (1024 * 1024)
         log.info("Written %s (%.1f MB)", output_file, file_size_mb)
         return output_file
@@ -261,7 +281,7 @@ def _quantize_component(
 
     # Save compressed state dict
     state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
-    save_file(state_dict, str(output_file))
+    save_file(state_dict, str(output_file), metadata=metadata)
 
     file_size_mb = output_file.stat().st_size / (1024 * 1024)
     log.info("Written %s (%.1f MB)", output_file, file_size_mb)

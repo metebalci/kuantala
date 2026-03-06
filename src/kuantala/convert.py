@@ -172,5 +172,19 @@ def convert_to_comfyui(input_path: Path, output_path: Path, remap_keys: str | No
     output = {k: v for k, v in output.items()
               if not k.endswith((".input_quantizer._amax", ".weight_quantizer._amax"))}
 
-    save_file(output, str(output_path))
+    # Preserve existing metadata and add convert info
+    metadata = _read_metadata(input_path)
+    metadata["converter"] = "kuantala"
+    if remap_keys:
+        metadata["remap_keys"] = remap_keys
+
+    save_file(output, str(output_path), metadata=metadata)
     return output_path
+
+
+def _read_metadata(path: Path) -> dict[str, str]:
+    """Read string metadata from a safetensors file header."""
+    with open(path, "rb") as f:
+        header_size = int.from_bytes(f.read(8), "little")
+        header = json.loads(f.read(header_size))
+    return dict(header.get("__metadata__", {}))
