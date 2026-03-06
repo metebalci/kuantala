@@ -40,27 +40,63 @@ class ModelInfo:
         return [c for c in self.components if c.component_type == component_type]
 
 
-# Classification of component names to types
-_TYPE_MAP = {
-    "transformer": "transformer",
-    "transformer_2": "transformer",
-    "unet": "unet",
-    "vae": "vae",
-    "text_encoder": "text_encoder",
-    "text_encoder_2": "text_encoder",
-    "text_encoder_3": "text_encoder",
-    "tokenizer": "tokenizer",
-    "tokenizer_2": "tokenizer",
-    "tokenizer_3": "tokenizer",
-    "scheduler": "scheduler",
-    "image_encoder": "other",
-    "feature_extractor": "other",
-    "safety_checker": "other",
+# Known class mappings: "library.ClassName" -> component_type
+_CLASS_MAP: dict[str, str] = {
+    # Transformers (diffusers)
+    "diffusers.Transformer2DModel": "transformer",
+    "diffusers.WanTransformer3DModel": "transformer",
+    "diffusers.FluxTransformer2DModel": "transformer",
+    "diffusers.SD3Transformer2DModel": "transformer",
+    "diffusers.DiTTransformer2DModel": "transformer",
+    "diffusers.HunyuanVideoTransformer3DModel": "transformer",
+    "diffusers.CogVideoXTransformer3DModel": "transformer",
+    "diffusers.PixArtTransformer2DModel": "transformer",
+    "diffusers.LTXVideoTransformer3DModel": "transformer",
+    "diffusers.MochiTransformer3DModel": "transformer",
+    # UNets (diffusers)
+    "diffusers.UNet2DConditionModel": "unet",
+    "diffusers.UNet2DModel": "unet",
+    "diffusers.UNet3DConditionModel": "unet",
+    # VAEs (diffusers)
+    "diffusers.AutoencoderKL": "vae",
+    "diffusers.AutoencoderKLWan": "vae",
+    "diffusers.AutoencoderDC": "vae",
+    "diffusers.AutoencoderTiny": "vae",
+    "diffusers.VQModel": "vae",
+    # Text encoders (transformers)
+    "transformers.CLIPTextModel": "text_encoder",
+    "transformers.CLIPTextModelWithProjection": "text_encoder",
+    "transformers.T5EncoderModel": "text_encoder",
+    "transformers.UMT5EncoderModel": "text_encoder",
+    "transformers.ChatGLMModel": "text_encoder",
+    # Tokenizers (transformers)
+    "transformers.CLIPTokenizer": "tokenizer",
+    "transformers.T5Tokenizer": "tokenizer",
+    "transformers.T5TokenizerFast": "tokenizer",
+    "transformers.AutoTokenizer": "tokenizer",
+    # Schedulers (diffusers)
+    "diffusers.FlowMatchEulerDiscreteScheduler": "scheduler",
+    "diffusers.EulerDiscreteScheduler": "scheduler",
+    "diffusers.EulerAncestralDiscreteScheduler": "scheduler",
+    "diffusers.DPMSolverMultistepScheduler": "scheduler",
+    "diffusers.PNDMScheduler": "scheduler",
+    "diffusers.DDIMScheduler": "scheduler",
+    "diffusers.UniPCMultistepScheduler": "scheduler",
+    "diffusers.FlowMatchHeunDiscreteScheduler": "scheduler",
+    # Image encoders
+    "transformers.CLIPVisionModelWithProjection": "other",
+    "transformers.SiglipVisionModel": "other",
 }
 
 
-def _classify_component(name: str) -> str:
-    return _TYPE_MAP.get(name, "other")
+def _classify_component(name: str, class_name: str | None = None, library: str | None = None) -> str:
+    """Classify a component by its library.class_name, falling back to directory name."""
+    if library and class_name:
+        key = f"{library}.{class_name}"
+        if key in _CLASS_MAP:
+            return _CLASS_MAP[key]
+        log.warning("Unknown model class: %s — classifying as 'other'", key)
+    return "other"
 
 
 def _has_safetensors(path: Path) -> bool:
@@ -93,10 +129,10 @@ def detect_components(model_dir: Path) -> ModelInfo:
             continue
         comp_dir = model_dir / key
         if comp_dir.is_dir() and _has_safetensors(comp_dir):
-            comp_type = _classify_component(key)
             # value is [library, class_name]
             library = value[0] if isinstance(value, list) and len(value) >= 1 else None
             class_name = value[1] if isinstance(value, list) and len(value) >= 2 else None
+            comp_type = _classify_component(key, class_name, library)
             components.append(ModelComponent(
                 name=key,
                 path=comp_dir,
