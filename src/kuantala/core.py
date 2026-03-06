@@ -42,7 +42,7 @@ def quantize(config: QuantConfig) -> list[Path]:
     Returns list of output file paths.
     """
     # Resolve model to local path
-    model_dir = resolve_model_path(config.model_source, config.hf_token)
+    model_dir = resolve_model_path(config.model_source)
 
     # Detect components
     model_info = detect_components(model_dir)

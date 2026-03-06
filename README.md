@@ -44,6 +44,9 @@ kuantala components Wan-AI/Wan2.1-I2V-14B-Diffusers
 # Show model architecture from its config (requires torch + diffusers)
 kuantala config Wan-AI/Wan2.1-I2V-14B-Diffusers
 
+# Estimate output sizes for all formats
+kuantala estimate Wan-AI/Wan2.1-I2V-14B-Diffusers
+
 # Inspect tensors in a quantized file
 kuantala tensors ./output/transformer-Q4_K.gguf
 
@@ -72,7 +75,6 @@ kuantala quantize [OPTIONS] MODEL
 | `--no-calibration` | Disable calibration forward passes (on by default for NVIDIA backend) |
 | `--calibration-data PATH` | Path to calibration data directory |
 | `--keep TEXT` | Manual layer override: `pattern:dtype` (repeatable) |
-| `--hf-token TEXT` | HuggingFace auth token (optional, also uses token from `hf auth login` and `HF_TOKEN` env var) |
 
 ### `kuantala components`
 
@@ -83,7 +85,18 @@ kuantala components [OPTIONS] MODEL
 | Option | Description |
 |--------|-------------|
 | `MODEL` | HuggingFace diffusers model ID (e.g. `Wan-AI/Wan2.1-I2V-14B-Diffusers`) or local directory path in diffusers format (required) |
-| `--hf-token TEXT` | HuggingFace auth token (optional, also uses token from `hf auth login` and `HF_TOKEN` env var) |
+
+### `kuantala estimate`
+
+```
+kuantala estimate [OPTIONS] MODEL
+```
+
+| Option | Description |
+|--------|-------------|
+| `MODEL` | HuggingFace diffusers model ID (e.g. `Wan-AI/Wan2.1-I2V-14B-Diffusers`) or local directory path in diffusers format (required) |
+
+Estimates output file sizes for common quantization formats: key GGUF types (Q4_K, Q5_K, Q6_K, Q8_0) and NVIDIA types (MXFP8, NVFP4) if torch + nvidia-modelopt are installed. Shows columns for heuristics-only and heuristics + statistics at each level (low/medium/high). VAE is excluded (skipped by default). Reads actual weight values to compute statistics, so the model must be downloaded.
 
 ### `kuantala config`
 
@@ -94,7 +107,6 @@ kuantala config [OPTIONS] MODEL
 | Option | Description |
 |--------|-------------|
 | `MODEL` | HuggingFace diffusers model ID (e.g. `Wan-AI/Wan2.1-I2V-14B-Diffusers`) or local directory path in diffusers format (required) |
-| `--hf-token TEXT` | HuggingFace auth token (optional, also uses token from `hf auth login` and `HF_TOKEN` env var) |
 
 Shows the model architecture from its config: full module hierarchy with layer types, shapes, and parameter counts. Only downloads `config.json` files — no model weights are downloaded or loaded. Requires `torch` and `diffusers`/`transformers` to be installed.
 

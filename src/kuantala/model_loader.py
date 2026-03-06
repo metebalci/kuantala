@@ -9,15 +9,17 @@ from kuantala.utils import get_logger
 log = get_logger(__name__)
 
 
-def resolve_model_path(source: str, token: str | None = None) -> Path:
+def resolve_model_path(source: str) -> Path:
     """Resolve a model source to a local directory path.
 
     Args:
         source: Either a local path or a HuggingFace Hub model ID (e.g. "user/model").
-        token: Optional HuggingFace auth token for gated models.
 
     Returns:
         Path to local directory containing model files.
+
+    Authentication is handled by huggingface-hub automatically (via ``hf auth login``
+    or the ``HF_TOKEN`` environment variable).
     """
     local = Path(source)
     if local.is_dir():
@@ -36,7 +38,7 @@ def resolve_model_path(source: str, token: str | None = None) -> Path:
     # Check for model_index.json before downloading the full model
     from huggingface_hub import hf_hub_download
     try:
-        hf_hub_download(repo_id=source, filename="model_index.json", token=token)
+        hf_hub_download(repo_id=source, filename="model_index.json")
     except Exception:
         raise FileNotFoundError(
             f"'{source}' does not contain a model_index.json on HuggingFace Hub. "
@@ -47,7 +49,6 @@ def resolve_model_path(source: str, token: str | None = None) -> Path:
     log.info("Downloading %s from HuggingFace Hub...", source)
     cache_dir = snapshot_download(
         repo_id=source,
-        token=token,
         allow_patterns=["*.safetensors", "*.json", "*.txt", "*.model"],
     )
     log.info("Model cached at %s", cache_dir)

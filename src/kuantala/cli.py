@@ -40,8 +40,6 @@ def cli(verbose: bool) -> None:
               help="Path to calibration data directory.")
 @click.option("--keep", multiple=True,
               help="Manual layer override: 'pattern:dtype' (repeatable).")
-@click.option("--hf-token", envvar="HF_TOKEN", default=None,
-              help="HuggingFace auth token (optional, also uses token from `hf auth login`).")
 def quantize(
     model: str,
     dtype: str,
@@ -54,7 +52,6 @@ def quantize(
     no_calibration: bool,
     calibration_data: Path | None,
     keep: tuple[str, ...],
-    hf_token: str | None,
 ) -> None:
     """Quantize a diffusion model.
 
@@ -84,7 +81,6 @@ def quantize(
         calibration=not no_calibration,
         calibration_data=calibration_data,
         keep=list(keep),
-        hf_token=hf_token,
     )
 
     output_files = run_quantize(config)
@@ -102,9 +98,7 @@ def quantize(
 @cli.command()
 @click.argument("model", metavar="MODEL_ID_OR_PATH")
 @click.option("--show-all", is_flag=True, help="Show all components, including non-quantizable ones.")
-@click.option("--hf-token", envvar="HF_TOKEN", default=None,
-              help="HuggingFace auth token (optional, also uses token from `hf auth login`).")
-def components(model: str, show_all: bool, hf_token: str | None) -> None:
+def components(model: str, show_all: bool) -> None:
     """Show components of a diffusion model.
 
     MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.1-I2V-14B-Diffusers)
@@ -134,7 +128,7 @@ def components(model: str, show_all: bool, hf_token: str | None) -> None:
                 "Install with: pip install kuantala[hub]"
             )
         try:
-            index_path = Path(hf_hub_download(repo_id=model, filename="model_index.json", token=hf_token))
+            index_path = Path(hf_hub_download(repo_id=model, filename="model_index.json", token=None))
         except Exception:
             raise click.ClickException(
                 f"'{model}' does not contain a model_index.json on HuggingFace Hub. "
@@ -169,7 +163,7 @@ def components(model: str, show_all: bool, hf_token: str | None) -> None:
             from huggingface_hub import HfApi, RepoFile
             api = HfApi()
             repo_files = [
-                f.rfilename for f in api.list_repo_tree(model, token=hf_token, recursive=True)
+                f.rfilename for f in api.list_repo_tree(model, token=None, recursive=True)
                 if isinstance(f, RepoFile)
             ]
         except Exception:
@@ -211,7 +205,7 @@ def components(model: str, show_all: bool, hf_token: str | None) -> None:
                 comp_sf_files = [f for f in repo_files if f.startswith(f"{key}/") and f.endswith(".safetensors")]
                 for sf_file in comp_sf_files:
                     status.update(f"Fetching {sf_file}...")
-                    header = _fetch_remote_safetensors_header(model, sf_file, hf_token)
+                    header = _fetch_remote_safetensors_header(model, sf_file)
                     if header:
                         headers_list.append(header)
 
@@ -255,18 +249,20 @@ def _read_local_safetensors_header(sf_path: Path) -> dict:
         return _json.loads(fh.read(header_size))
 
 
-def _fetch_remote_safetensors_header(repo_id: str, filename: str, token: str | None) -> dict | None:
-    """Fetch safetensors header from HF Hub using HTTP range requests."""
+def _fetch_remote_safetensors_header(repo_id: str, filename: str) -> dict | None:
+    """Fetch safetensors header from HF Hub using HTTP range requests.
+
+    Authentication is handled automatically by huggingface-hub
+    (via ``hf auth login`` or the ``HF_TOKEN`` environment variable).
+    """
     import json as _json
     import struct
 
     try:
-        from huggingface_hub import hf_hub_url, get_session
+        from huggingface_hub import hf_hub_url, get_session, utils
         url = hf_hub_url(repo_id=repo_id, filename=filename)
         session = get_session()
-        headers: dict[str, str] = {}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
+        headers = utils.build_hf_headers()
         # Read header size (first 8 bytes)
         headers["Range"] = "bytes=0-7"
         resp = session.get(url, headers=headers)
@@ -314,11 +310,162 @@ def list_formats() -> None:
     console.print(table)
 
 
+# Approximate bits per parameter for each quantization type (including overhead)
+_BITS_PER_PARAM = {
+    "Q2_K": 2.6,
+    "Q3_K": 3.4,
+    "Q4_0": 4.5,
+    "Q4_K": 4.5,
+    "Q5_0": 5.5,
+    "Q5_K": 5.5,
+    "Q6_K": 6.6,
+    "Q8_0": 8.5,
+    "MXFP8": 8.0,
+    "NVFP4": 4.0,
+    "F16": 16.0,
+    "BF16": 16.0,
+    "F32": 32.0,
+}
+
+
 @cli.command()
 @click.argument("model", metavar="MODEL_ID_OR_PATH")
-@click.option("--hf-token", envvar="HF_TOKEN", default=None,
-              help="HuggingFace auth token (optional, also uses token from `hf auth login`).")
-def config(model: str, hf_token: str | None) -> None:
+def estimate(model: str) -> None:
+    """Estimate output sizes for common quantization formats.
+
+    Shows a table of estimated file sizes for key GGUF types (Q4_K, Q5_K,
+    Q6_K, Q8_0) and NVIDIA types (MXFP8, NVFP4) if torch + modelopt are
+    installed. Heuristics are always assumed on (default). VAE is skipped.
+
+    MODEL is a HuggingFace diffusers model ID or local directory path.
+    """
+    from kuantala.components import detect_components
+    from kuantala.config import NVIDIA_TYPES
+    from kuantala.mixed import _HEURISTIC_PATTERNS, compute_statistics_overrides
+    from kuantala.model_loader import resolve_model_path
+
+    import fnmatch
+
+    # Show key GGUF types + NVIDIA types (if available)
+    estimate_dtypes = ["Q4_K", "Q5_K", "Q6_K", "Q8_0"]
+    try:
+        import torch  # noqa: F401
+        import modelopt  # noqa: F401
+        estimate_dtypes += NVIDIA_TYPES
+    except ImportError:
+        pass
+
+    model_dir = resolve_model_path(model)
+    model_info = detect_components(model_dir)
+
+    _quantizable_types = {"transformer", "unet", "text_encoder", "image_encoder"}
+
+    # Gather per-component param counts and tensor names
+    components_data: list[dict] = []
+    for comp in model_info.components:
+        if comp.component_type not in _quantizable_types:
+            continue
+
+        sf_files = sorted(comp.path.glob("*.safetensors"))
+        if not sf_files:
+            continue
+
+        # Read headers to get param counts and tensor names
+        total_params = 0
+        tensor_info: dict[str, int] = {}  # name -> param_count
+        for sf_path in sf_files:
+            header = _read_local_safetensors_header(sf_path)
+            for tname, meta in header.items():
+                if tname == "__metadata__":
+                    continue
+                param_count = 1
+                for dim in meta.get("shape", []):
+                    param_count *= dim
+                tensor_info[tname] = param_count
+                total_params += param_count
+
+        # Count heuristic-preserved params
+        heuristic_params = 0
+        for tname, pc in tensor_info.items():
+            for pattern in _HEURISTIC_PATTERNS:
+                if fnmatch.fnmatch(tname.lower(), pattern.lower()):
+                    heuristic_params += pc
+                    break
+
+        # Run actual statistics analysis for each level
+        stats_params = {}
+        for level in ("low", "medium", "high"):
+            overrides = compute_statistics_overrides(sf_files, level)
+            stats_params[level] = sum(tensor_info.get(t, 0) for t in overrides)
+
+        components_data.append({
+            "name": comp.name,
+            "type": comp.component_type,
+            "total_params": total_params,
+            "heuristic_params": heuristic_params,
+            "stats_params": stats_params,
+        })
+
+    if not components_data:
+        console.print("[yellow]No quantizable components found.[/]")
+        return
+
+    # Print component summary
+    total_all = sum(c["total_params"] for c in components_data)
+    console.print(f"\n[bold]Model:[/] {model}")
+    console.print(f"[bold]Pipeline:[/] {model_info.model_type or 'unknown'}")
+    console.print(f"[bold]Total parameters (excl. VAE):[/] {_format_params(total_all)}")
+    for c in components_data:
+        console.print(f"  {c['name']}: {_format_params(c['total_params'])}")
+
+    def _estimate_size(dtype: str, comp: dict, use_stats: str | None) -> float:
+        """Estimate size in bytes for a component at a given dtype."""
+        total = comp["total_params"]
+        preserved = comp["heuristic_params"]
+        if use_stats:
+            preserved = max(preserved, preserved + comp["stats_params"].get(use_stats, 0))
+
+        quant_params = max(0, total - preserved)
+        bpp_quant = _BITS_PER_PARAM.get(dtype, 8.0)
+        bpp_f16 = _BITS_PER_PARAM["F16"]
+        return (quant_params * bpp_quant + preserved * bpp_f16) / 8
+
+    def _fmt(b: float) -> str:
+        gb = b / (1024 ** 3)
+        if gb >= 1.0:
+            return f"{gb:.1f} GB"
+        return f"{b / (1024 ** 2):.0f} MB"
+
+    # Build size estimate table
+    table = Table(title="Estimated Output Sizes", title_style="bold")
+    table.add_column("Format", style="cyan")
+    table.add_column("Heuristics", justify="right")
+    table.add_column("+ Stats Low", justify="right")
+    table.add_column("+ Stats Medium", justify="right")
+    table.add_column("+ Stats High", justify="right")
+
+    for dtype in estimate_dtypes:
+        sizes = {}
+        for stats_level in (None, "low", "medium", "high"):
+            total_bytes = sum(
+                _estimate_size(dtype, comp, stats_level) for comp in components_data
+            )
+            sizes[stats_level] = total_bytes
+
+        table.add_row(
+            dtype,
+            _fmt(sizes[None]),
+            _fmt(sizes["low"]),
+            _fmt(sizes["medium"]),
+            _fmt(sizes["high"]),
+        )
+
+    console.print(table)
+
+
+@cli.command()
+@click.argument("model", metavar="MODEL_ID_OR_PATH")
+def config(model: str) -> None:
     """Show the architecture of a diffusion model from its config.
 
     Loads model configs (no weights) to show the full module hierarchy.
@@ -358,7 +505,7 @@ def config(model: str, hf_token: str | None) -> None:
                 "Install with: pip install kuantala[hub]"
             )
         try:
-            index_path = Path(hf_hub_download(repo_id=model, filename="model_index.json", token=hf_token))
+            index_path = Path(hf_hub_download(repo_id=model, filename="model_index.json", token=None))
         except Exception:
             raise click.ClickException(
                 f"'{model}' does not contain a model_index.json on HuggingFace Hub. "
@@ -395,8 +542,7 @@ def config(model: str, hf_token: str | None) -> None:
             try:
                 from huggingface_hub import hf_hub_download
                 config_path = Path(hf_hub_download(
-                    repo_id=model, filename=f"{key}/config.json", token=hf_token
-                ))
+                    repo_id=model, filename=f"{key}/config.json"                ))
             except Exception:
                 console.print(f"\n[yellow]Could not fetch config for {key}[/]")
                 continue

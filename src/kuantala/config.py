@@ -51,9 +51,6 @@ class QuantConfig:
     # Manual layer overrides: ["pattern:dtype", ...]
     keep: list[str] = field(default_factory=list)
 
-    # HuggingFace auth token
-    hf_token: str | None = None
-
     def __post_init__(self) -> None:
         self.output_dir = Path(self.output_dir)
         if self.dtype not in ALL_DTYPES:
