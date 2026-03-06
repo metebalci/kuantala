@@ -153,7 +153,7 @@ def info(model: str, show_all: bool, hf_token: str | None) -> None:
     if model_type:
         console.print(f"[bold]Pipeline:[/] {model_type}")
 
-    table = Table(title="Components")
+    table = Table(title="Components", title_style="bold")
     table.add_column("Name", style="cyan")
     table.add_column("Type", style="green")
     table.add_column("Class")
@@ -276,7 +276,7 @@ def list_formats() -> None:
     """List available quantization formats."""
     from kuantala.config import GGUF_TYPES, NVIDIA_TYPES
 
-    table = Table(title="Available Quantization Formats")
+    table = Table(title="Available Quantization Formats", title_style="bold")
     table.add_column("Format", style="cyan")
     table.add_column("Backend", style="green")
     table.add_column("Description")
