@@ -12,9 +12,9 @@ def test_cli_help():
     assert "Kuantala" in result.output
 
 
-def test_list_formats():
+def test_formats():
     runner = CliRunner()
-    result = runner.invoke(cli, ["list-formats"])
+    result = runner.invoke(cli, ["formats"])
     assert result.exit_code == 0
     assert "Q4_K" in result.output
     assert "MXFP8" in result.output
@@ -26,7 +26,22 @@ def test_quantize_missing_dtype():
     assert result.exit_code != 0
 
 
-def test_info_nonexistent_model():
+def test_components_nonexistent_model():
     runner = CliRunner()
-    result = runner.invoke(cli, ["info", "/nonexistent/path"])
+    result = runner.invoke(cli, ["components", "/nonexistent/path"])
     assert result.exit_code != 0
+
+
+def test_layers_nonexistent_file():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["layers", "/nonexistent/file.gguf"])
+    assert result.exit_code != 0
+
+
+def test_layers_unsupported_format(tmp_path):
+    dummy = tmp_path / "model.bin"
+    dummy.write_bytes(b"dummy")
+    runner = CliRunner()
+    result = runner.invoke(cli, ["layers", str(dummy)])
+    assert result.exit_code != 0
+    assert "Unsupported file format" in result.output

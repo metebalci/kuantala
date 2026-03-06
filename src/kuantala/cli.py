@@ -104,8 +104,8 @@ def quantize(
 @click.option("--show-all", is_flag=True, help="Show all components, including non-quantizable ones.")
 @click.option("--hf-token", envvar="HF_TOKEN", default=None,
               help="HuggingFace auth token (optional, also uses token from `hf auth login`).")
-def info(model: str, show_all: bool, hf_token: str | None) -> None:
-    """Inspect a diffusion model's components.
+def components(model: str, show_all: bool, hf_token: str | None) -> None:
+    """Show components of a diffusion model.
 
     MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.1-I2V-14B-Diffusers)
     or a local directory path in diffusers format (with model_index.json).
@@ -177,48 +177,60 @@ def info(model: str, show_all: bool, hf_token: str | None) -> None:
 
     _quantizable_types = {"transformer", "unet", "vae", "text_encoder", "image_encoder"}
 
+    # Collect component info, with progress for remote fetches
+    rows: list[tuple[str, str, str, int, set]] = []
+
+    # Count total safetensors files for progress
+    components_to_show: list[tuple[str, str | None, str | None, str]] = []
     for key, value in index.items():
         if key.startswith("_") or value is None:
             continue
-        # Skip non-component entries (e.g. boundary_ratio: 0.9)
         if not isinstance(value, list):
             continue
         library = value[0] if len(value) >= 1 else None
         class_name = value[1] if len(value) >= 2 else None
-        # Skip [None, None] placeholders
         if library is None and class_name is None:
             continue
         comp_type = _classify_component(key, class_name, library)
         if not show_all and comp_type not in _quantizable_types:
             continue
-        class_label = f"{library}.{class_name}" if library and class_name else ""
+        components_to_show.append((key, library, class_name, comp_type))
 
-        # Collect safetensors headers (local or remote)
-        headers_list: list[dict] = []
-        if is_local:
-            comp_dir = model_dir / key
-            if comp_dir.is_dir():
-                for sf_path in sorted(comp_dir.glob("*.safetensors")):
-                    headers_list.append(_read_local_safetensors_header(sf_path))
-        else:
-            for sf_file in [f for f in repo_files if f.startswith(f"{key}/") and f.endswith(".safetensors")]:
-                header = _fetch_remote_safetensors_header(model, sf_file, hf_token)
-                if header:
-                    headers_list.append(header)
+    with console.status("Fetching model info...") as status:
+        for key, library, class_name, comp_type in components_to_show:
+            class_label = f"{library}.{class_name}" if library and class_name else ""
 
-        # Compute params and dtypes from headers
-        total_params = 0
-        dtypes: set[str] = set()
-        for header in headers_list:
-            for tname, meta in header.items():
-                if tname == "__metadata__":
-                    continue
-                dtypes.add(meta.get("dtype", "unknown"))
-                param_count = 1
-                for dim in meta.get("shape", []):
-                    param_count *= dim
-                total_params += param_count
+            # Collect safetensors headers (local or remote)
+            headers_list: list[dict] = []
+            if is_local:
+                comp_dir = model_dir / key
+                if comp_dir.is_dir():
+                    for sf_path in sorted(comp_dir.glob("*.safetensors")):
+                        headers_list.append(_read_local_safetensors_header(sf_path))
+            else:
+                comp_sf_files = [f for f in repo_files if f.startswith(f"{key}/") and f.endswith(".safetensors")]
+                for sf_file in comp_sf_files:
+                    status.update(f"Fetching {sf_file}...")
+                    header = _fetch_remote_safetensors_header(model, sf_file, hf_token)
+                    if header:
+                        headers_list.append(header)
 
+            # Compute params and dtypes from headers
+            total_params = 0
+            dtypes: set[str] = set()
+            for header in headers_list:
+                for tname, meta in header.items():
+                    if tname == "__metadata__":
+                        continue
+                    dtypes.add(meta.get("dtype", "unknown"))
+                    param_count = 1
+                    for dim in meta.get("shape", []):
+                        param_count *= dim
+                    total_params += param_count
+
+            rows.append((key, comp_type, class_label, total_params, dtypes))
+
+    for key, comp_type, class_label, total_params, dtypes in rows:
         if total_params >= 1_000_000_000:
             params_str = f"{total_params / 1_000_000_000:.1f}B"
         elif total_params >= 1_000_000:
@@ -271,7 +283,7 @@ def _fetch_remote_safetensors_header(repo_id: str, filename: str, token: str | N
         return None
 
 
-@cli.command("list-formats")
+@cli.command("formats")
 def list_formats() -> None:
     """List available quantization formats."""
     from kuantala.config import GGUF_TYPES, NVIDIA_TYPES
@@ -298,5 +310,160 @@ def list_formats() -> None:
         table.add_row(dtype, "GGUF", descriptions.get(dtype, ""))
     for dtype in NVIDIA_TYPES:
         table.add_row(dtype, "NVIDIA", descriptions.get(dtype, ""))
+
+    console.print(table)
+
+
+@cli.command()
+@click.argument("file", metavar="FILE_PATH", type=click.Path(exists=True, path_type=Path))
+@click.option("--top", type=int, default=None, help="Show only the first N layers.")
+def layers(file: Path, top: int | None) -> None:
+    """Show layers in a safetensors or GGUF file.
+
+    Shows per-layer name, dtype, shape, and parameter count.
+    """
+    if file.suffix == ".gguf":
+        _inspect_gguf(file, top)
+    elif file.suffix == ".safetensors":
+        _inspect_safetensors(file, top)
+    else:
+        raise click.ClickException(f"Unsupported file format: {file.suffix}. Use .safetensors or .gguf")
+
+
+def _format_params(count: int) -> str:
+    """Format parameter count as human-readable string."""
+    if count >= 1_000_000_000:
+        return f"{count / 1_000_000_000:.1f}B"
+    elif count >= 1_000_000:
+        return f"{count / 1_000_000:.1f}M"
+    elif count >= 1_000:
+        return f"{count / 1_000:.1f}K"
+    return str(count)
+
+
+def _inspect_safetensors(file: Path, top: int | None) -> None:
+    """Inspect a safetensors file."""
+    import json as _json
+
+    with open(file, "rb") as fh:
+        header_size = int.from_bytes(fh.read(8), "little")
+        header = _json.loads(fh.read(header_size))
+
+    file_size_mb = file.stat().st_size / (1024 * 1024)
+    console.print(f"\n[bold]File:[/] {file}")
+    console.print(f"[bold]Format:[/] safetensors")
+    console.print(f"[bold]Size:[/] {file_size_mb:.1f} MB")
+
+    # Collect tensor info
+    dtype_counts: dict[str, int] = {}
+    dtype_params: dict[str, int] = {}
+    total_params = 0
+    tensors: list[tuple[str, str, list[int], int]] = []
+
+    for name, meta in header.items():
+        if name == "__metadata__":
+            continue
+        dtype = meta.get("dtype", "unknown")
+        shape = meta.get("shape", [])
+        param_count = 1
+        for dim in shape:
+            param_count *= dim
+        total_params += param_count
+        dtype_counts[dtype] = dtype_counts.get(dtype, 0) + 1
+        dtype_params[dtype] = dtype_params.get(dtype, 0) + param_count
+        tensors.append((name, dtype, shape, param_count))
+
+    console.print(f"[bold]Tensors:[/] {len(tensors)}")
+    console.print(f"[bold]Total parameters:[/] {_format_params(total_params)}")
+
+    # Dtype summary
+    summary = Table(title="Dtype Summary", title_style="bold")
+    summary.add_column("Dtype", style="cyan")
+    summary.add_column("Tensors", justify="right")
+    summary.add_column("Parameters", justify="right")
+    summary.add_column("% of Total", justify="right")
+    for dtype in sorted(dtype_counts.keys()):
+        pct = dtype_params[dtype] / total_params * 100 if total_params else 0
+        summary.add_row(dtype, str(dtype_counts[dtype]), _format_params(dtype_params[dtype]), f"{pct:.1f}%")
+    console.print(summary)
+
+    # Layer detail
+    table = Table(title="Layers", title_style="bold")
+    table.add_column("#", justify="right", style="dim")
+    table.add_column("Name")
+    table.add_column("Dtype", style="cyan")
+    table.add_column("Shape")
+    table.add_column("Parameters", justify="right")
+
+    for i, (name, dtype, shape, param_count) in enumerate(tensors):
+        if top is not None and i >= top:
+            console.print(f"  ... and {len(tensors) - top} more layers (use --top to show more)")
+            break
+        shape_str = "\u00d7".join(str(d) for d in shape)
+        table.add_row(str(i + 1), name, dtype, shape_str, _format_params(param_count))
+
+    console.print(table)
+
+
+def _inspect_gguf(file: Path, top: int | None) -> None:
+    """Inspect a GGUF file."""
+    try:
+        from gguf import GGUFReader
+    except ImportError:
+        raise click.ClickException("gguf package not installed. Install with: pip install kuantala[gguf]")
+
+    reader = GGUFReader(str(file))
+
+    file_size_mb = file.stat().st_size / (1024 * 1024)
+    console.print(f"\n[bold]File:[/] {file}")
+    console.print(f"[bold]Format:[/] GGUF")
+    console.print(f"[bold]Size:[/] {file_size_mb:.1f} MB")
+
+    # Collect tensor info
+    dtype_counts: dict[str, int] = {}
+    dtype_params: dict[str, int] = {}
+    total_params = 0
+    tensors: list[tuple[str, str, list[int], int]] = []
+
+    for tensor in reader.tensors:
+        name = tensor.name
+        dtype = str(tensor.tensor_type).split(".")[-1]
+        shape = list(tensor.shape)
+        param_count = 1
+        for dim in shape:
+            param_count *= dim
+        total_params += param_count
+        dtype_counts[dtype] = dtype_counts.get(dtype, 0) + 1
+        dtype_params[dtype] = dtype_params.get(dtype, 0) + param_count
+        tensors.append((name, dtype, shape, param_count))
+
+    console.print(f"[bold]Tensors:[/] {len(tensors)}")
+    console.print(f"[bold]Total parameters:[/] {_format_params(total_params)}")
+
+    # Dtype summary
+    summary = Table(title="Dtype Summary", title_style="bold")
+    summary.add_column("Dtype", style="cyan")
+    summary.add_column("Tensors", justify="right")
+    summary.add_column("Parameters", justify="right")
+    summary.add_column("% of Total", justify="right")
+    for dtype in sorted(dtype_counts.keys()):
+        pct = dtype_params[dtype] / total_params * 100 if total_params else 0
+        summary.add_row(dtype, str(dtype_counts[dtype]), _format_params(dtype_params[dtype]), f"{pct:.1f}%")
+    console.print(summary)
+
+    # Layer detail
+    table = Table(title="Layers", title_style="bold")
+    table.add_column("#", justify="right", style="dim")
+    table.add_column("Name")
+    table.add_column("Dtype", style="cyan")
+    table.add_column("Shape")
+    table.add_column("Parameters", justify="right")
+
+    for i, (name, dtype, shape, param_count) in enumerate(tensors):
+        if top is not None and i >= top:
+            console.print(f"  ... and {len(tensors) - top} more layers (use --top to show more)")
+            break
+        shape_str = "\u00d7".join(str(d) for d in shape)
+        table.add_row(str(i + 1), name, dtype, shape_str, _format_params(param_count))
 
     console.print(table)

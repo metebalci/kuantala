@@ -39,10 +39,13 @@ kuantala quantize Wan-AI/Wan2.1-I2V-14B-Diffusers --dtype Q4_K --output ./wan-q4
 kuantala quantize ./local-model --dtype MXFP8 --output ./model-fp8
 
 # Inspect model components
-kuantala info Wan-AI/Wan2.1-I2V-14B-Diffusers
+kuantala components Wan-AI/Wan2.1-I2V-14B-Diffusers
+
+# Inspect layers in a quantized file
+kuantala layers ./output/transformer-Q4_K.gguf
 
 # List available formats
-kuantala list-formats
+kuantala formats
 ```
 
 ## CLI Reference
@@ -68,10 +71,10 @@ kuantala quantize [OPTIONS] MODEL
 | `--keep TEXT` | Manual layer override: `pattern:dtype` (repeatable) |
 | `--hf-token TEXT` | HuggingFace auth token (optional, also uses token from `hf auth login` and `HF_TOKEN` env var) |
 
-### `kuantala info`
+### `kuantala components`
 
 ```
-kuantala info [OPTIONS] MODEL
+kuantala components [OPTIONS] MODEL
 ```
 
 | Option | Description |
@@ -79,13 +82,26 @@ kuantala info [OPTIONS] MODEL
 | `MODEL` | HuggingFace diffusers model ID (e.g. `Wan-AI/Wan2.1-I2V-14B-Diffusers`) or local directory path in diffusers format (required) |
 | `--hf-token TEXT` | HuggingFace auth token (optional, also uses token from `hf auth login` and `HF_TOKEN` env var) |
 
-### `kuantala list-formats`
+### `kuantala formats`
 
 ```
-kuantala list-formats
+kuantala formats
 ```
 
 Lists all available quantization formats with their backend and description.
+
+### `kuantala layers`
+
+```
+kuantala layers [OPTIONS] FILE_PATH
+```
+
+| Option | Description |
+|--------|-------------|
+| `FILE_PATH` | Path to a `.safetensors` or `.gguf` file (required) |
+| `--top N` | Show only the first N layers |
+
+Shows per-layer detail: name, dtype, shape, and parameter count. Also shows a dtype summary with parameter distribution.
 
 ### Global Options
 
