@@ -17,7 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 hub = ["huggingface-hub"]
 gguf = ["gguf", "numpy"]
-nvidia = ["diffusers", "nvidia-modelopt"]
+nvidia = ["diffusers", "transformers", "accelerate", "nvidia-modelopt"]
 all = ["kuantala[hub,gguf,nvidia]"]
 dev = ["pytest", "build", "twine", "kuantala[all]"]
 
