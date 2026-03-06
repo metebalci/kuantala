@@ -82,7 +82,7 @@ class NvidiaBackend(QuantBackend):
             try:
                 lib = importlib.import_module(component.library)
                 cls = getattr(lib, component.class_name)
-                model = cls.from_pretrained(str(component_path), torch_dtype=torch.float16)
+                model = cls.from_pretrained(str(component_path), dtype=torch.float16)
                 model = model.cuda()
                 log.info("Loaded %s.%s", component.library, component.class_name)
             except Exception as e:
