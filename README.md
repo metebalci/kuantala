@@ -142,20 +142,23 @@ kuantala quantize black-forest-labs/FLUX.1-dev \
 
 ## Layer-Level Control
 
-Use `--keep` to disable quantization on specific layers by glob pattern. Matched layers stay at their original precision (FP16/BF16):
+Use `--keep` to disable quantization on specific layers by glob pattern. Matched layers stay at their original precision (FP16/BF16). Time embeddings, conditioning projections, and input/output layers are small but sensitive — keeping them unquantized has negligible size impact but helps quality.
+
+## Model Recipes
+
+### Wan 2.2 I2V 14B
 
 ```bash
-# Keep normalization layers unquantized
-kuantala quantize model --dtype FP8 --keep "*.norm*"
-
-# Keep attention output projections unquantized
-kuantala quantize model --dtype NVFP4 --keep "*.attn.to_out*"
-
-# Multiple patterns
-kuantala quantize model --dtype FP8 \
-    --keep "*.norm*" \
-    --keep "*.time_embed*"
+kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype FP8 \
+    --keep "*condition_embedder*" \
+    --keep "*patch_embedding*"
 ```
+
+Key layers kept at full precision:
+- `condition_embedder` — time embedding, text projection, conditioning (232M params)
+- `patch_embedding` — input Conv3d
+
+Norms (`FP32LayerNorm`, `RMSNorm`) and embeddings (`WanRotaryPosEmbed`) are already kept at original precision by modelopt.
 
 ## Python API
 
@@ -164,11 +167,10 @@ from pathlib import Path
 from kuantala import QuantConfig, quantize
 
 config = QuantConfig(
-    model_source="Wan-AI/Wan2.1-I2V-14B-Diffusers",
+    model_source="Wan-AI/Wan2.2-I2V-A14B-Diffusers",
     dtype="FP8",
-    vae_dtype="skip",
     output_dir=Path("./output"),
-    keep=["*.norm*"],
+    keep=["*condition_embedder*", "*patch_embedding*"],
 )
 output_files = quantize(config)
 ```
