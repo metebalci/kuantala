@@ -115,17 +115,30 @@ class NvidiaBackend(QuantBackend):
         quant_cfg = _get_quant_config(dtype)
         log.info("Applying %s quantization via nvidia-modelopt...", dtype)
 
+        forward_loop = lambda m: None
         if config.mixed_calibration:
-            def calibrate_fn(m):
+            def forward_loop(m):
                 log.info("Running calibration forward passes...")
                 with torch.no_grad():
                     for _ in range(8):
                         for p in m.parameters():
                             _ = p * 1.0
 
-            mtq.quantize(model, quant_cfg, forward_loop=calibrate_fn)
-        else:
-            mtq.quantize(model, quant_cfg, forward_loop=lambda m: None)
+        # Disable KV cache quantization plugin — diffusion model components
+        # don't use KV cache, and the auto-patching fails on some attention
+        # classes (e.g. UMT5Attention).
+        try:
+            from modelopt.torch.quantization.plugins import custom as _custom_plugins
+            saved_plugins = list(_custom_plugins._CUSTOM_MODEL_QUANTIZE_PLUGIN_REGISTRY)
+            _custom_plugins._CUSTOM_MODEL_QUANTIZE_PLUGIN_REGISTRY.clear()
+        except Exception:
+            saved_plugins = None
+
+        try:
+            mtq.quantize(model, quant_cfg, forward_loop=forward_loop)
+        finally:
+            if saved_plugins is not None:
+                _custom_plugins._CUSTOM_MODEL_QUANTIZE_PLUGIN_REGISTRY.extend(saved_plugins)
 
         # Extract quantized state dict
         quantized_state_dict = {
