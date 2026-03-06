@@ -332,10 +332,10 @@ def config(model: str, hf_token: str | None) -> None:
 
     try:
         import torch  # noqa: F401
+        import diffusers  # noqa: F401
     except ImportError:
         raise click.ClickException(
-            "The inspect command requires PyTorch. "
-            "Install with: pip install torch"
+            "The config command requires torch and diffusers."
         )
 
     local = Path(model)
