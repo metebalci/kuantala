@@ -96,7 +96,7 @@ kuantala estimate [OPTIONS] MODEL
 |--------|-------------|
 | `MODEL` | HuggingFace diffusers model ID (e.g. `Wan-AI/Wan2.1-I2V-14B-Diffusers`) or local directory path in diffusers format (required) |
 
-Estimates output file sizes for common quantization formats: key GGUF types (Q4_K, Q5_K, Q6_K, Q8_0) and NVIDIA types (MXFP8, NVFP4) if torch + nvidia-modelopt are installed. Shows columns for heuristics-only and heuristics + statistics at each level (low/medium/high). VAE is excluded (skipped by default). Reads actual weight values to compute statistics, so the model must be downloaded.
+Estimates output file sizes for common quantization formats: GGUF (Q4_K, Q5_K, Q6_K, Q8_0) and NVIDIA (MXFP8, NVFP4). Estimates are computed from parameter counts — no actual quantization is performed. Shows columns for heuristics-only and heuristics + statistics at each level (low/medium/high). VAE is excluded (skipped by default). Reads actual weight values to compute statistics, so the model must be downloaded.
 
 ### `kuantala config`
 

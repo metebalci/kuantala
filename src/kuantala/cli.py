@@ -334,26 +334,19 @@ def estimate(model: str) -> None:
     """Estimate output sizes for common quantization formats.
 
     Shows a table of estimated file sizes for key GGUF types (Q4_K, Q5_K,
-    Q6_K, Q8_0) and NVIDIA types (MXFP8, NVFP4) if torch + modelopt are
-    installed. Heuristics are always assumed on (default). VAE is skipped.
+    Q6_K, Q8_0) and NVIDIA types (MXFP8, NVFP4). Estimates are computed
+    from parameter counts — no actual quantization is performed.
+    Heuristics are always assumed on (default). VAE is skipped.
 
     MODEL is a HuggingFace diffusers model ID or local directory path.
     """
     from kuantala.components import detect_components
-    from kuantala.config import NVIDIA_TYPES
     from kuantala.mixed import _HEURISTIC_PATTERNS, compute_statistics_overrides
     from kuantala.model_loader import resolve_model_path
 
     import fnmatch
 
-    # Show key GGUF types + NVIDIA types (if available)
-    estimate_dtypes = ["Q4_K", "Q5_K", "Q6_K", "Q8_0"]
-    try:
-        import torch  # noqa: F401
-        import modelopt  # noqa: F401
-        estimate_dtypes += NVIDIA_TYPES
-    except ImportError:
-        pass
+    estimate_dtypes = ["Q4_K", "Q5_K", "Q6_K", "Q8_0", "MXFP8", "NVFP4"]
 
     model_dir = resolve_model_path(model)
     model_info = detect_components(model_dir)
