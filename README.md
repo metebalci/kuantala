@@ -195,7 +195,6 @@ Use `--keep` to disable quantization on specific layers by glob pattern. Matched
 Based on [NVIDIA modelopt's example settings](https://github.com/NVIDIA/Model-Optimizer/blob/main/examples/diffusers/quantization/utils.py):
 
 ```bash
-# NVFP4 (recommended for Blackwell GPUs)
 kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4 \
     --keep "*patch_embedding*" \
     --keep "*condition_embedder*" \
@@ -209,18 +208,6 @@ kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4 \
 
 # Convert for ComfyUI
 kuantala convert ./output/transformer-NVFP4.safetensors --remap-keys wan
-
-# FP8 (for Hopper+ GPUs)
-kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype FP8 \
-    --keep "*patch_embedding*" \
-    --keep "*condition_embedder*" \
-    --keep "*proj_out*" \
-    --keep "*blocks.0.*" \
-    --keep "*blocks.1.*" \
-    --keep "*blocks.2.*" \
-    --keep "*blocks.37.*" \
-    --keep "*blocks.38.*" \
-    --keep "*blocks.39.*"
 ```
 
 Key layers kept at full precision:
