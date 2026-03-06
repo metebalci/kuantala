@@ -82,7 +82,9 @@ class NvidiaBackend(QuantBackend):
             try:
                 lib = importlib.import_module(component.library)
                 cls = getattr(lib, component.class_name)
-                model = cls.from_pretrained(str(component_path), dtype=torch.float16)
+                # diffusers uses torch_dtype, transformers uses dtype
+                dtype_kwarg = "dtype" if component.library == "transformers" else "torch_dtype"
+                model = cls.from_pretrained(str(component_path), **{dtype_kwarg: torch.float16})
                 model = model.cuda()
                 log.info("Loaded %s.%s", component.library, component.class_name)
             except Exception as e:
@@ -124,13 +126,13 @@ class NvidiaBackend(QuantBackend):
                         for p in m.parameters():
                             _ = p * 1.0
 
-        # Disable KV cache quantization plugin — diffusion model components
-        # don't use KV cache, and the auto-patching fails on some attention
-        # classes (e.g. UMT5Attention).
+        # Disable HF attention KV cache quantization plugin — diffusion model
+        # components don't use KV cache, and the auto-patching fails on some
+        # attention classes (e.g. UMT5Attention).
         try:
             from modelopt.torch.quantization.plugins import custom as _custom_plugins
-            saved_plugins = list(_custom_plugins._CUSTOM_MODEL_QUANTIZE_PLUGIN_REGISTRY)
-            _custom_plugins._CUSTOM_MODEL_QUANTIZE_PLUGIN_REGISTRY.clear()
+            saved_plugins = set(_custom_plugins.CUSTOM_MODEL_PLUGINS)
+            _custom_plugins.CUSTOM_MODEL_PLUGINS.clear()
         except Exception:
             saved_plugins = None
 
@@ -138,7 +140,7 @@ class NvidiaBackend(QuantBackend):
             mtq.quantize(model, quant_cfg, forward_loop=forward_loop)
         finally:
             if saved_plugins is not None:
-                _custom_plugins._CUSTOM_MODEL_QUANTIZE_PLUGIN_REGISTRY.extend(saved_plugins)
+                _custom_plugins.CUSTOM_MODEL_PLUGINS.update(saved_plugins)
 
         # Extract quantized state dict
         quantized_state_dict = {
