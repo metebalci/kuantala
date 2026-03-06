@@ -28,17 +28,19 @@ For local models only, `huggingface-hub` is not needed. PyTorch is not declared 
 
 > **Note:** The NVIDIA backend requires Python ≤ 3.12 due to `nvidia-modelopt` package constraints. The GGUF backend works with any Python version.
 
+Kuantala requires models in **diffusers format** (with `model_index.json`). If a model has both a raw and a diffusers variant on HuggingFace, use the diffusers one (typically suffixed with `-Diffusers`).
+
 ## Quick Start
 
 ```bash
 # Quantize to GGUF Q4_K
-kuantala quantize Wan-AI/Wan2.1-I2V-14B --dtype Q4_K --output ./wan-q4
+kuantala quantize Wan-AI/Wan2.1-I2V-14B-Diffusers --dtype Q4_K --output ./wan-q4
 
 # Quantize to NVIDIA MXFP8
 kuantala quantize ./local-model --dtype MXFP8 --output ./model-fp8
 
 # Inspect model components
-kuantala info Wan-AI/Wan2.1-I2V-14B
+kuantala info Wan-AI/Wan2.1-I2V-14B-Diffusers
 
 # List available formats
 kuantala list-formats
@@ -54,7 +56,7 @@ kuantala quantize [OPTIONS] MODEL
 
 | Option | Description |
 |--------|-------------|
-| `MODEL` | HuggingFace model ID (e.g. `Wan-AI/Wan2.1-I2V-14B`) or local directory path (required) |
+| `MODEL` | HuggingFace diffusers model ID (e.g. `Wan-AI/Wan2.1-I2V-14B-Diffusers`) or local directory path in diffusers format (required) |
 | `-d, --dtype` | Target quantization type (required). GGUF: `Q2_K`, `Q3_K`, `Q4_0`, `Q4_K`, `Q5_0`, `Q5_K`, `Q6_K`, `Q8_0`. NVIDIA: `MXFP8`, `NVFP4` |
 | `-o, --output` | Output directory (default: `./output`) |
 | `--vae-dtype` | VAE quantization dtype (default: `skip`). Accepts any dtype above plus `F16`, `F32`, `BF16`, `skip` |
@@ -74,7 +76,7 @@ kuantala info [OPTIONS] MODEL
 
 | Option | Description |
 |--------|-------------|
-| `MODEL` | HuggingFace model ID (e.g. `Wan-AI/Wan2.1-I2V-14B`) or local directory path (required) |
+| `MODEL` | HuggingFace diffusers model ID (e.g. `Wan-AI/Wan2.1-I2V-14B-Diffusers`) or local directory path in diffusers format (required) |
 | `--hf-token TEXT` | HuggingFace auth token (optional, also uses token from `hf auth login` and `HF_TOKEN` env var) |
 
 ### `kuantala list-formats`
@@ -131,7 +133,7 @@ from pathlib import Path
 from kuantala import QuantConfig, quantize
 
 config = QuantConfig(
-    model_source="Wan-AI/Wan2.1-I2V-14B",
+    model_source="Wan-AI/Wan2.1-I2V-14B-Diffusers",
     dtype="Q4_K",
     vae_dtype="skip",
     output_dir=Path("./output"),

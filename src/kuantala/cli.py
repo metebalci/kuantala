@@ -55,8 +55,8 @@ def quantize(
 ) -> None:
     """Quantize a diffusion model.
 
-    MODEL is a HuggingFace model ID (e.g. Wan-AI/Wan2.1-I2V-14B) or a local
-    directory path containing safetensors files.
+    MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.1-I2V-14B-Diffusers)
+    or a local directory path in diffusers format (with model_index.json).
     """
     from kuantala.core import quantize as run_quantize
 
@@ -100,8 +100,8 @@ def quantize(
 def info(model: str, hf_token: str | None) -> None:
     """Inspect a diffusion model's components.
 
-    MODEL is a HuggingFace model ID (e.g. Wan-AI/Wan2.1-I2V-14B) or a local
-    directory path containing safetensors files.
+    MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.1-I2V-14B-Diffusers)
+    or a local directory path in diffusers format (with model_index.json).
     """
     from kuantala.components import detect_components
     from kuantala.model_loader import resolve_model_path

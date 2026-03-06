@@ -33,6 +33,17 @@ def resolve_model_path(source: str, token: str | None = None) -> Path:
             "Install with: pip install kuantala[hub]"
         )
 
+    # Check for model_index.json before downloading the full model
+    from huggingface_hub import hf_hub_download
+    try:
+        hf_hub_download(repo_id=source, filename="model_index.json", token=token)
+    except Exception:
+        raise FileNotFoundError(
+            f"'{source}' does not contain a model_index.json on HuggingFace Hub. "
+            "Kuantala requires a diffusers-format model (with model_index.json). "
+            "Look for a '-Diffusers' variant of the model, e.g. 'Wan-AI/Wan2.1-I2V-14B-Diffusers'."
+        )
+
     log.info("Downloading %s from HuggingFace Hub...", source)
     cache_dir = snapshot_download(
         repo_id=source,
