@@ -7,7 +7,7 @@ from pathlib import Path
 import click
 from rich.table import Table
 
-from kuantala.config import ALL_DTYPES, COMPONENT_DTYPES, QuantConfig
+from kuantala.config import ALL_DTYPES, COMPONENT_DTYPES
 from kuantala.utils import console, setup_logging
 
 
@@ -46,6 +46,7 @@ def quantize(
     MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.1-I2V-14B-Diffusers)
     or a local directory path in diffusers format (with model_index.json).
     """
+    from kuantala.config import QuantConfig
     from kuantala.core import quantize as run_quantize
 
     # Normalize case
