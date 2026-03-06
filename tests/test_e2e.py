@@ -60,7 +60,7 @@ def test_components_cli(model_dir):
 
 
 @requires_hub
-def test_layers_safetensors(model_dir):
+def test_tensors_safetensors(model_dir):
     """Verify layers CLI command on a safetensors file."""
     from click.testing import CliRunner
     from kuantala.cli import cli
@@ -69,14 +69,14 @@ def test_layers_safetensors(model_dir):
     assert len(sf_files) > 0
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["layers", str(sf_files[0]), "--top", "5"])
+    result = runner.invoke(cli, ["tensors", str(sf_files[0])])
     assert result.exit_code == 0
     assert "Dtype Summary" in result.output
-    assert "Layers" in result.output
+    assert "Tensors" in result.output
 
 
 @requires_hub
-def test_layers_gguf(model_dir, tmp_path):
+def test_tensors_gguf(model_dir, tmp_path):
     """Verify layers CLI command on a quantized GGUF file."""
     from click.testing import CliRunner
     from kuantala import QuantConfig, quantize
@@ -92,7 +92,7 @@ def test_layers_gguf(model_dir, tmp_path):
     assert len(output_files) > 0
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["layers", str(output_files[0]), "--top", "5"])
+    result = runner.invoke(cli, ["tensors", str(output_files[0])])
     assert result.exit_code == 0
     assert "GGUF" in result.output
     assert "Dtype Summary" in result.output

@@ -32,16 +32,16 @@ def test_components_nonexistent_model():
     assert result.exit_code != 0
 
 
-def test_layers_nonexistent_file():
+def test_tensors_nonexistent_file():
     runner = CliRunner()
-    result = runner.invoke(cli, ["layers", "/nonexistent/file.gguf"])
+    result = runner.invoke(cli, ["tensors", "/nonexistent/file.gguf"])
     assert result.exit_code != 0
 
 
-def test_layers_unsupported_format(tmp_path):
+def test_tensors_unsupported_format(tmp_path):
     dummy = tmp_path / "model.bin"
     dummy.write_bytes(b"dummy")
     runner = CliRunner()
-    result = runner.invoke(cli, ["layers", str(dummy)])
+    result = runner.invoke(cli, ["tensors", str(dummy)])
     assert result.exit_code != 0
     assert "Unsupported file format" in result.output

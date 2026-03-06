@@ -41,8 +41,8 @@ kuantala quantize ./local-model --dtype MXFP8 --output ./model-fp8
 # Inspect model components
 kuantala components Wan-AI/Wan2.1-I2V-14B-Diffusers
 
-# Inspect layers in a quantized file
-kuantala layers ./output/transformer-Q4_K.gguf
+# Inspect tensors in a quantized file
+kuantala tensors ./output/transformer-Q4_K.gguf
 
 # List available formats
 kuantala formats
@@ -90,18 +90,17 @@ kuantala formats
 
 Lists all available quantization formats with their backend and description.
 
-### `kuantala layers`
+### `kuantala tensors`
 
 ```
-kuantala layers [OPTIONS] FILE_PATH
+kuantala tensors [OPTIONS] FILE_PATH
 ```
 
 | Option | Description |
 |--------|-------------|
 | `FILE_PATH` | Path to a `.safetensors` or `.gguf` file (required) |
-| `--top N` | Show only the first N layers |
 
-Shows per-layer detail: name, dtype, shape, and parameter count. Also shows a dtype summary with parameter distribution.
+Shows per-tensor detail: name, dtype, shape, and parameter count. Also shows a dtype summary with parameter distribution.
 
 ### Global Options
 

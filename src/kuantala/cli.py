@@ -316,16 +316,15 @@ def list_formats() -> None:
 
 @cli.command()
 @click.argument("file", metavar="FILE_PATH", type=click.Path(exists=True, path_type=Path))
-@click.option("--top", type=int, default=None, help="Show only the first N layers.")
-def layers(file: Path, top: int | None) -> None:
-    """Show layers in a safetensors or GGUF file.
+def tensors(file: Path) -> None:
+    """Show tensors in a safetensors or GGUF file.
 
-    Shows per-layer name, dtype, shape, and parameter count.
+    Shows per-tensor name, dtype, shape, and parameter count.
     """
     if file.suffix == ".gguf":
-        _inspect_gguf(file, top)
+        _inspect_gguf(file)
     elif file.suffix == ".safetensors":
-        _inspect_safetensors(file, top)
+        _inspect_safetensors(file)
     else:
         raise click.ClickException(f"Unsupported file format: {file.suffix}. Use .safetensors or .gguf")
 
@@ -341,7 +340,7 @@ def _format_params(count: int) -> str:
     return str(count)
 
 
-def _inspect_safetensors(file: Path, top: int | None) -> None:
+def _inspect_safetensors(file: Path) -> None:
     """Inspect a safetensors file."""
     import json as _json
 
@@ -373,10 +372,10 @@ def _inspect_safetensors(file: Path, top: int | None) -> None:
         dtype_params[dtype] = dtype_params.get(dtype, 0) + param_count
         tensors.append((name, dtype, shape, param_count))
 
-    _print_layers_and_summary(tensors, dtype_counts, dtype_params, total_params, top)
+    _print_layers_and_summary(tensors, dtype_counts, dtype_params, total_params)
 
 
-def _inspect_gguf(file: Path, top: int | None) -> None:
+def _inspect_gguf(file: Path) -> None:
     """Inspect a GGUF file."""
     try:
         from gguf import GGUFReader
@@ -408,7 +407,21 @@ def _inspect_gguf(file: Path, top: int | None) -> None:
         dtype_params[dtype] = dtype_params.get(dtype, 0) + param_count
         tensors.append((name, dtype, shape, param_count))
 
-    _print_layers_and_summary(tensors, dtype_counts, dtype_params, total_params, top)
+    _print_layers_and_summary(tensors, dtype_counts, dtype_params, total_params)
+
+
+def _natural_sort_key(name: str) -> list:
+    """Sort key that handles numeric parts naturally (block.2 < block.10)."""
+    import re
+    return [int(part) if part.isdigit() else part.lower() for part in re.split(r'(\d+)', name)]
+
+
+def _layer_name(tensor_name: str) -> str:
+    """Extract the layer name from a tensor name by stripping the last component."""
+    dot = tensor_name.rfind(".")
+    if dot > 0:
+        return tensor_name[:dot]
+    return tensor_name
 
 
 def _print_layers_and_summary(
@@ -416,23 +429,31 @@ def _print_layers_and_summary(
     dtype_counts: dict[str, int],
     dtype_params: dict[str, int],
     total_params: int,
-    top: int | None,
 ) -> None:
-    """Print layer detail table followed by dtype summary."""
-    # Layer detail
-    table = Table(title="Layers", title_style="bold")
+    """Print tensors grouped by layer, followed by dtype summary."""
+    # Sort tensors naturally (numeric-aware) for input→output ordering
+    tensors = sorted(tensors, key=lambda t: _natural_sort_key(t[0]))
+
+    # Tensor detail, grouped by layer
+    table = Table(title="Tensors", title_style="bold")
     table.add_column("#", justify="right", style="dim")
-    table.add_column("Name")
+    table.add_column("Layer / Tensor")
     table.add_column("Dtype", style="cyan")
     table.add_column("Shape")
     table.add_column("Parameters", justify="right")
 
+    current_layer = None
     for i, (name, dtype, shape, param_count) in enumerate(tensors):
-        if top is not None and i >= top:
-            console.print(f"  ... and {len(tensors) - top} more layers (use --top to show more)")
-            break
+        layer = _layer_name(name)
+        if layer != current_layer:
+            if current_layer is not None:
+                table.add_section()
+            table.add_row("", f"[bold]{layer}[/]", "", "", "")
+            current_layer = layer
+        # Show only the parameter name (last component) under the layer
+        param_name = name[name.rfind(".") + 1:] if "." in name else name
         shape_str = "\u00d7".join(str(d) for d in shape)
-        table.add_row(str(i + 1), name, dtype, shape_str, _format_params(param_count))
+        table.add_row(str(i + 1), f"  {param_name}", dtype, shape_str, _format_params(param_count))
 
     console.print(table)
 
