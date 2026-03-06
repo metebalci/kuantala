@@ -404,17 +404,19 @@ def config(model: str, hf_token: str | None) -> None:
         if not config_path.exists():
             continue
 
-        # Instantiate model from config (no weights)
+        # Instantiate model from config on meta device (no memory allocation)
         full_class = f"{library}.{class_name}"
         try:
+            import torch
             lib = importlib.import_module(library)
             cls = getattr(lib, class_name)
-            if library == "transformers":
-                from transformers import AutoConfig
-                cfg = AutoConfig.from_pretrained(str(config_path.parent))
-                model_instance = cls(cfg)
-            else:
-                model_instance = cls.from_config(str(config_path.parent))
+            with torch.device("meta"):
+                if library == "transformers":
+                    from transformers import AutoConfig
+                    cfg = AutoConfig.from_pretrained(str(config_path.parent))
+                    model_instance = cls(cfg)
+                else:
+                    model_instance = cls.from_config(str(config_path.parent))
         except Exception as e:
             console.print(f"\n[yellow]Could not load {full_class} for '{key}': {e}[/]")
             continue
