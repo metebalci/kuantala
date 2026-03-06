@@ -117,12 +117,13 @@ def info(model: str, hf_token: str | None) -> None:
     table = Table(title="Components")
     table.add_column("Name", style="cyan")
     table.add_column("Type", style="green")
-    table.add_column("Path")
+    table.add_column("Class")
     table.add_column("Safetensors Files", justify="right")
 
     for comp in model_info.components:
         n_files = len(list(comp.path.glob("*.safetensors")))
-        table.add_row(comp.name, comp.component_type, str(comp.path), str(n_files))
+        class_label = f"{comp.library}.{comp.class_name}" if comp.library and comp.class_name else ""
+        table.add_row(comp.name, comp.component_type, class_label, str(n_files))
 
     console.print(table)
 

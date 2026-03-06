@@ -43,6 +43,7 @@ class ModelInfo:
 # Classification of component names to types
 _TYPE_MAP = {
     "transformer": "transformer",
+    "transformer_2": "transformer",
     "unet": "unet",
     "vae": "vae",
     "text_encoder": "text_encoder",
