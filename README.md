@@ -163,6 +163,7 @@ output_files = quantize(config)
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+pip install torch --index-url https://download.pytorch.org/whl/cu130
 pip install -e ".[dev]"
 pytest tests/
 ```
