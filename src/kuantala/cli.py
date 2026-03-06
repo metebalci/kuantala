@@ -127,18 +127,25 @@ def info(model: str, hf_token: str | None) -> None:
     table.add_column("Parameters", justify="right")
     table.add_column("Dtype", justify="right")
 
-    from safetensors import safe_open
+    import json as _json
 
     for comp in model_info.components:
         class_label = f"{comp.library}.{comp.class_name}" if comp.library and comp.class_name else ""
         total_params = 0
         dtypes: set[str] = set()
         for sf_path in sorted(comp.path.glob("*.safetensors")):
-            with safe_open(str(sf_path), framework="numpy") as f:
-                for name in f.keys():
-                    tensor = f.get_tensor(name)
-                    total_params += tensor.size
-                    dtypes.add(str(tensor.dtype))
+            # Read metadata header without loading tensors (handles bfloat16 etc.)
+            with open(sf_path, "rb") as fh:
+                header_size = int.from_bytes(fh.read(8), "little")
+                header = _json.loads(fh.read(header_size))
+            for name, meta in header.items():
+                if name == "__metadata__":
+                    continue
+                dtypes.add(meta.get("dtype", "unknown"))
+                param_count = 1
+                for dim in meta.get("shape", []):
+                    param_count *= dim
+                total_params += param_count
 
         if total_params >= 1_000_000_000:
             params_str = f"{total_params / 1_000_000_000:.1f}B"
