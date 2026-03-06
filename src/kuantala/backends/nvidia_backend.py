@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,143 @@ from kuantala.config import NVIDIA_TYPES, QuantConfig
 from kuantala.utils import get_logger
 
 log = get_logger(__name__)
+
+
+def _make_random_calibration_fn(model: Any, component_type: str, config_path: Path, num_batches: int = 4):
+    """Create a calibration forward_loop that feeds random data through the model."""
+    import torch
+
+    cfg = {}
+    cfg_file = config_path / "config.json"
+    if cfg_file.exists():
+        with open(cfg_file) as f:
+            cfg = json.load(f)
+
+    device = next(model.parameters()).device
+    model_dtype = next(model.parameters()).dtype
+
+    def forward_loop(m):
+        log.info("Running calibration with random data (%d batches)...", num_batches)
+        with torch.no_grad():
+            for _ in range(num_batches):
+                _run_random_forward(m, component_type, cfg, device, model_dtype)
+
+    return forward_loop
+
+
+def _run_random_forward(model: Any, component_type: str, cfg: dict, device: Any, model_dtype: Any) -> None:
+    """Run a single forward pass with random inputs appropriate for the component type."""
+    import torch
+
+    if component_type == "text_encoder":
+        _forward_text_encoder(model, cfg, device)
+    elif component_type in ("transformer", "unet"):
+        _forward_transformer_or_unet(model, cfg, device, model_dtype)
+    elif component_type == "vae":
+        _forward_vae(model, cfg, device, model_dtype)
+    elif component_type == "image_encoder":
+        _forward_image_encoder(model, cfg, device, model_dtype)
+    else:
+        # Generic fallback: just touch all parameters
+        for p in model.parameters():
+            _ = p * 1.0
+
+
+def _forward_text_encoder(model: Any, cfg: dict, device: Any) -> None:
+    """Forward pass for CLIP/T5/UMT5 text encoders."""
+    import torch
+
+    # Text encoders take input_ids (integer token indices)
+    vocab_size = cfg.get("vocab_size", 32128)
+    max_length = cfg.get("max_position_embeddings", 77)
+    seq_len = min(max_length, 64)
+    input_ids = torch.randint(0, vocab_size, (1, seq_len), device=device)
+    model(input_ids=input_ids)
+
+
+def _forward_transformer_or_unet(model: Any, cfg: dict, device: Any, model_dtype: Any) -> None:
+    """Forward pass for diffusion transformers and UNets."""
+    import torch
+
+    in_channels = cfg.get("in_channels", 4)
+    class_name = cfg.get("_class_name", "")
+
+    if "3D" in class_name or "Video" in class_name or "Wan" in class_name:
+        # Video model: (batch, channels, frames, height, width)
+        patch_size = cfg.get("patch_size", [1, 2, 2])
+        # Use small spatial dims for calibration
+        f, h, w = 8, 16, 16
+        hidden_states = torch.randn(1, in_channels, f, h, w, device=device, dtype=model_dtype)
+    else:
+        # 2D model: (batch, channels, height, width)
+        sample_size = cfg.get("sample_size", 64)
+        if isinstance(sample_size, list):
+            sample_size = sample_size[0]
+        # Use smaller size for calibration
+        s = min(sample_size, 32)
+        hidden_states = torch.randn(1, in_channels, s, s, device=device, dtype=model_dtype)
+
+    timestep = torch.randint(0, 1000, (1,), device=device)
+
+    # Encoder hidden states (text conditioning)
+    text_dim = cfg.get("cross_attention_dim") or cfg.get("text_dim") or cfg.get("encoder_hid_dim", 768)
+    encoder_hidden_states = torch.randn(1, 16, text_dim, device=device, dtype=model_dtype)
+
+    try:
+        model(hidden_states, timestep=timestep, encoder_hidden_states=encoder_hidden_states)
+    except TypeError:
+        # Some models use positional args
+        try:
+            model(hidden_states, timestep, encoder_hidden_states)
+        except Exception:
+            # Last resort
+            for p in model.parameters():
+                _ = p * 1.0
+
+
+def _forward_vae(model: Any, cfg: dict, device: Any, model_dtype: Any) -> None:
+    """Forward pass for VAE (encode path)."""
+    import torch
+
+    in_channels = cfg.get("in_channels", 3)
+    sample_size = cfg.get("sample_size", 256)
+    if isinstance(sample_size, list):
+        sample_size = sample_size[0]
+    s = min(sample_size, 64)
+
+    class_name = cfg.get("_class_name", "")
+    if "Wan" in class_name or "Video" in class_name:
+        # Video VAE: (batch, channels, frames, height, width)
+        x = torch.randn(1, in_channels, 4, s, s, device=device, dtype=model_dtype)
+    else:
+        x = torch.randn(1, in_channels, s, s, device=device, dtype=model_dtype)
+
+    try:
+        model.encode(x)
+    except Exception:
+        try:
+            model(x)
+        except Exception:
+            for p in model.parameters():
+                _ = p * 1.0
+
+
+def _forward_image_encoder(model: Any, cfg: dict, device: Any, model_dtype: Any) -> None:
+    """Forward pass for CLIP/SigLIP image encoders."""
+    import torch
+
+    image_size = cfg.get("image_size", 224)
+    num_channels = cfg.get("num_channels", 3)
+    pixel_values = torch.randn(1, num_channels, image_size, image_size, device=device, dtype=model_dtype)
+
+    try:
+        model(pixel_values=pixel_values)
+    except TypeError:
+        try:
+            model(pixel_values)
+        except Exception:
+            for p in model.parameters():
+                _ = p * 1.0
 
 
 def _check_dependencies() -> None:
@@ -118,13 +256,9 @@ class NvidiaBackend(QuantBackend):
         log.info("Applying %s quantization via nvidia-modelopt...", dtype)
 
         forward_loop = lambda m: None
-        if config.mixed_calibration:
-            def forward_loop(m):
-                log.info("Running calibration forward passes...")
-                with torch.no_grad():
-                    for _ in range(8):
-                        for p in m.parameters():
-                            _ = p * 1.0
+        if config.calibration:
+            comp_type = component.component_type if component else "other"
+            forward_loop = _make_random_calibration_fn(model, comp_type, component_path)
 
         # Disable HF attention KV cache quantization plugin — diffusion model
         # components don't use KV cache, and the auto-patching fails on some

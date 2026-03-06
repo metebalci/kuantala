@@ -155,7 +155,7 @@ def compute_layer_overrides(
     overrides: dict[str, str] = {}
 
     # Layer 1: Heuristics (lowest priority)
-    if config.mixed_heuristics:
+    if config.heuristics:
         overrides.update(compute_heuristic_overrides(tensor_names))
 
     # Layer 2: Statistics

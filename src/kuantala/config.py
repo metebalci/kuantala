@@ -42,10 +42,10 @@ class QuantConfig:
     te_dtype: str | None = None
     ie_dtype: str | None = None
 
-    # Mixed quantization
-    mixed_heuristics: bool = False
+    # Mixed quantization (heuristics and calibration on by default)
+    heuristics: bool = True
     mixed_statistics: int | None = None  # percentage, e.g. 10 = top 10%
-    mixed_calibration: bool = False
+    calibration: bool = True  # only effective for NVIDIA backend
     calibration_data: Path | None = None
 
     # Manual layer overrides: ["pattern:dtype", ...]

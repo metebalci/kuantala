@@ -30,12 +30,12 @@ def cli(verbose: bool) -> None:
               default=None, help="Text encoder quantization dtype (default: same as --dtype).")
 @click.option("--ie-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=False),
               default=None, help="Image encoder quantization dtype (default: same as --dtype).")
-@click.option("--mixed-heuristics", is_flag=True,
-              help="Preserve known-sensitive layers at higher precision.")
+@click.option("--no-heuristics", is_flag=True,
+              help="Disable heuristic-based mixed precision (on by default).")
 @click.option("--mixed-statistics", type=int, default=None, metavar="N",
               help="Preserve top N%% most sensitive layers (by weight statistics).")
-@click.option("--mixed-calibration", is_flag=True,
-              help="Use calibration forward passes to find sensitive layers (NVIDIA only).")
+@click.option("--no-calibration", is_flag=True,
+              help="Disable calibration forward passes (on by default for NVIDIA backend).")
 @click.option("--calibration-data", type=click.Path(exists=True, path_type=Path), default=None,
               help="Path to calibration data directory.")
 @click.option("--keep", multiple=True,
@@ -49,9 +49,9 @@ def quantize(
     vae_dtype: str,
     te_dtype: str | None,
     ie_dtype: str,
-    mixed_heuristics: bool,
+    no_heuristics: bool,
     mixed_statistics: int | None,
-    mixed_calibration: bool,
+    no_calibration: bool,
     calibration_data: Path | None,
     keep: tuple[str, ...],
     hf_token: str | None,
@@ -79,9 +79,9 @@ def quantize(
         vae_dtype=vae_dtype,
         te_dtype=te_dtype,
         ie_dtype=ie_dtype,
-        mixed_heuristics=mixed_heuristics,
+        heuristics=not no_heuristics,
         mixed_statistics=mixed_statistics,
-        mixed_calibration=mixed_calibration,
+        calibration=not no_calibration,
         calibration_data=calibration_data,
         keep=list(keep),
         hf_token=hf_token,

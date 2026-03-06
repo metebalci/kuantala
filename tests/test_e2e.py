@@ -144,7 +144,7 @@ def test_quantize_q4_k_mixed(model_dir, tmp_path):
         output_dir=tmp_path / "q4km",
         vae_dtype="skip",
         te_dtype="Q8_0",
-        mixed_heuristics=True,
+        # mixed_heuristics=True by default
     )
     output_files = quantize(config)
 

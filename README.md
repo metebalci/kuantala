@@ -67,9 +67,9 @@ kuantala quantize [OPTIONS] MODEL
 | `--vae-dtype` | VAE quantization dtype (default: `skip`). Accepts any dtype above plus `F16`, `F32`, `BF16`, `skip` |
 | `--te-dtype` | Text encoder quantization dtype (default: same as `--dtype`). Same choices as `--vae-dtype` |
 | `--ie-dtype` | Image encoder quantization dtype (default: same as `--dtype`). Same choices as `--vae-dtype` |
-| `--mixed-heuristics` | Preserve known-sensitive layers (norms, attention QKV, timestep embeddings) at higher precision |
+| `--no-heuristics` | Disable heuristic-based mixed precision (on by default) |
 | `--mixed-statistics N` | Preserve top N% most sensitive layers by weight statistics |
-| `--mixed-calibration` | Use calibration forward passes to find sensitive layers (NVIDIA backend only) |
+| `--no-calibration` | Disable calibration forward passes (on by default for NVIDIA backend) |
 | `--calibration-data PATH` | Path to calibration data directory |
 | `--keep TEXT` | Manual layer override: `pattern:dtype` (repeatable) |
 | `--hf-token TEXT` | HuggingFace auth token (optional, also uses token from `hf auth login` and `HF_TOKEN` env var) |
@@ -146,21 +146,21 @@ kuantala quantize black-forest-labs/FLUX.1-dev \
 
 ## Mixed Quantization
 
-Keep important layers at higher precision using one or more methods:
+By default, kuantala uses **heuristic-based mixed precision** (preserves known-sensitive layers like norms, attention QKV, timestep embeddings at higher precision) and **calibration** (runs random data through the model to find optimal quantization scale factors, NVIDIA backend only).
 
 ```bash
-# Heuristic: preserve known-sensitive layers (norms, attention QKV, timestep embeddings)
-kuantala quantize model --dtype Q4_K --mixed-heuristics
+# Default: heuristics + calibration enabled
+kuantala quantize model --dtype MXFP8
 
-# Statistics: preserve top N% layers with highest outlier ratios
+# Also preserve top N% layers with highest outlier ratios
 kuantala quantize model --dtype Q4_K --mixed-statistics 10
 
-# Calibration: measure actual quantization error (NVIDIA backend only)
-kuantala quantize model --dtype MXFP8 --mixed-calibration
+# Disable heuristics or calibration if needed
+kuantala quantize model --dtype Q4_K --no-heuristics
+kuantala quantize model --dtype MXFP8 --no-calibration
 
-# Combine methods + manual overrides
+# Manual overrides (always highest priority)
 kuantala quantize model --dtype Q4_K \
-    --mixed-heuristics --mixed-statistics 15 \
     --keep "norm_*:F16" --keep "attn_*:Q8_0"
 ```
 
@@ -177,7 +177,7 @@ config = QuantConfig(
     dtype="Q4_K",
     vae_dtype="skip",
     output_dir=Path("./output"),
-    mixed_heuristics=True,
+    # heuristics=True and calibration=True by default
     mixed_statistics=10,
     keep=["norm_*:F16"],
 )
