@@ -39,6 +39,9 @@ kuantala config Wan-AI/Wan2.2-I2V-A14B-Diffusers
 # Estimate output sizes for all formats
 kuantala estimate Wan-AI/Wan2.2-I2V-A14B-Diffusers
 
+# Convert NVFP4 output to ComfyUI format
+kuantala convert ./output-wan/transformer-NVFP4.safetensors --remap-keys wan
+
 # Inspect tensors in a quantized file
 kuantala tensors ./output/transformer-FP8.safetensors
 ```
