@@ -28,8 +28,8 @@ DEFAULT_KEEPS: dict[str, list[str]] = {
         "*patch_embedding*",
         "*condition_embedder*",
         "*proj_out*",
-        "*blocks.0.*", "*blocks.1.*", "*blocks.2.*",
-        "*blocks.37.*", "*blocks.38.*", "*blocks.39.*",
+        "*blocks.[0-2].*",
+        "*blocks.3[7-9].*",
     ],
     "flux": [
         "*proj_out*",
@@ -53,6 +53,8 @@ DEFAULT_KEEPS["z-image"] = [
     "*cap_embedder*",
     "*all_x_embedder*",
     "*all_final_layer*",
+    "*layers.[0-2].*",
+    "*layers.2[7-9].*",
 ]
 
 DEFAULT_KEEPS["qwen-image"] = [
@@ -62,6 +64,8 @@ DEFAULT_KEEPS["qwen-image"] = [
     "*txt_norm*",
     "*norm_out*",
     "*proj_out*",
+    "*transformer_blocks.[0-2].*",
+    "*transformer_blocks.5[7-9].*",
 ]
 
 DEFAULT_KEEPS_NAMES = list(DEFAULT_KEEPS.keys())

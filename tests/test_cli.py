@@ -12,9 +12,9 @@ def test_cli_help():
     assert "Kuantala" in result.output
 
 
-def test_formats():
+def test_info():
     runner = CliRunner()
-    result = runner.invoke(cli, ["formats"])
+    result = runner.invoke(cli, ["info"])
     assert result.exit_code == 0
     assert "FP8" in result.output
     assert "NVFP4" in result.output

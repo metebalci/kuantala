@@ -8,7 +8,7 @@ from pathlib import Path
 import click
 from rich.table import Table
 
-from kuantala.config import ALL_DTYPES, COMPONENT_DTYPES, DEFAULT_KEEPS_NAMES
+from kuantala.config import ALL_DTYPES, COMPONENT_DTYPES, DEFAULT_KEEPS, DEFAULT_KEEPS_NAMES
 from kuantala.utils import console, setup_logging
 
 # Component types that can be quantized
@@ -239,10 +239,10 @@ def _count_params_from_header(header: dict) -> int:
     return total
 
 
-@cli.command("formats")
-def list_formats() -> None:
-    """List available quantization formats."""
-    table = Table(title="Available Quantization Formats", title_style="bold")
+@cli.command("info")
+def info() -> None:
+    """Show supported formats and default keep presets."""
+    table = Table(title="Quantization Formats", title_style="bold")
     table.add_column("Format", style="cyan")
     table.add_column("Description")
 
@@ -257,6 +257,16 @@ def list_formats() -> None:
         table.add_row(dtype, descriptions.get(dtype, ""))
 
     console.print(table)
+
+    keeps_table = Table(title="Default Keep Presets", title_style="bold")
+    keeps_table.add_column("Preset", style="cyan")
+    keeps_table.add_column("Patterns")
+
+    for name in DEFAULT_KEEPS_NAMES:
+        patterns = ", ".join(DEFAULT_KEEPS[name])
+        keeps_table.add_row(name, patterns)
+
+    console.print(keeps_table)
 
 
 # Approximate bits per parameter for size estimation

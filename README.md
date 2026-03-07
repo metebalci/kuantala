@@ -19,13 +19,13 @@ Kuantala requires models in **diffusers format** (with `model_index.json`). If a
 
 ```bash
 # Quantize to FP8 (~50% size, ~2x inference speed on Hopper+/Blackwell)
-kuantala quantize Wan-AI/Wan2.1-I2V-14B-Diffusers --dtype FP8 --output ./wan-fp8
+kuantala quantize Wan-AI/Wan2.1-I2V-14B-Diffusers --dtype FP8 --output ./output-wan
 
 # Quantize to NVFP4 (~75% size, fastest on Blackwell)
-kuantala quantize ./local-model --dtype NVFP4 --output ./model-fp4
+kuantala quantize ./local-model --dtype NVFP4 --output ./output-model
 
 # Convert FP32 model to FP16
-kuantala quantize ./old-model --dtype FP16 --output ./model-fp16
+kuantala quantize ./old-model --dtype FP16 --output ./output-model
 
 # Inspect model components
 kuantala components Wan-AI/Wan2.1-I2V-14B-Diffusers
@@ -39,8 +39,8 @@ kuantala estimate Wan-AI/Wan2.1-I2V-14B-Diffusers
 # Inspect tensors in a quantized file
 kuantala tensors ./output/transformer-FP8.safetensors
 
-# List available formats
-kuantala formats
+# Show supported formats and default keep presets
+kuantala info
 ```
 
 ## How It Works
@@ -81,8 +81,8 @@ The conversion performs:
 
 Full workflow (Wan example):
 ```bash
-kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4 --output ./wan-nvfp4
-kuantala convert ./wan-nvfp4/transformer-NVFP4.safetensors --remap-keys wan
+kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4 --output ./output-wan
+kuantala convert ./output-wan/transformer-NVFP4.safetensors --remap-keys wan
 # Load transformer-NVFP4-comfyui.safetensors in ComfyUI
 ```
 
@@ -152,13 +152,13 @@ kuantala tensors FILE_PATH
 
 Shows per-tensor detail: name, dtype, shape, and parameter count. Also shows a dtype summary.
 
-### `kuantala formats`
+### `kuantala info`
 
 ```
-kuantala formats
+kuantala info
 ```
 
-Lists available quantization formats with descriptions.
+Shows supported quantization formats and default keep presets.
 
 ### Global Options
 
@@ -199,33 +199,33 @@ For known HuggingFace model IDs, kuantala automatically applies preset keep patt
 | `wan` | Wan2.2-I2V-A14B, Wan2.2-T2V-A14B | patch_embedding, condition_embedder, proj_out, first/last 3 blocks |
 | `flux` | FLUX.2-dev, FLUX.1-Krea-dev | proj_out, time_text_embed, context_embedder, x_embedder, norm_out |
 | `ltx` | LTX-2 | proj_in, time_embed, caption_projection, proj_out, patchify_proj, adaln_single |
-| `z-image` | Z-Image | t_embedder, cap_embedder, all_x_embedder, all_final_layer |
-| `qwen-image` | Qwen-Image-2512, Qwen-Image-Edit-2511 | time_text_embed, img_in, txt_in, txt_norm, norm_out, proj_out |
+| `z-image` | Z-Image | t_embedder, cap_embedder, all_x_embedder, all_final_layer, first/last 3 layers |
+| `qwen-image` | Qwen-Image-2512, Qwen-Image-Edit-2511 | time_text_embed, img_in, txt_in, txt_norm, norm_out, proj_out, first/last 3 transformer_blocks |
 
 Use `--use-default-keeps <preset>` to explicitly select a preset (e.g. for local paths). Use `--no-default-keeps` to disable auto-detection.
 
 ```bash
 # Wan 2.2 I2V / T2V 14B (keeps auto-detected)
-kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4 --output ./wan-nvfp4
-kuantala convert ./wan-nvfp4/transformer-NVFP4.safetensors --remap-keys wan
+kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4 --output ./output-wan
+kuantala convert ./output-wan/transformer-NVFP4.safetensors --remap-keys wan
 
 # FLUX.2 dev
-kuantala quantize black-forest-labs/FLUX.2-dev --dtype NVFP4 --output ./flux2-nvfp4
+kuantala quantize black-forest-labs/FLUX.2-dev --dtype NVFP4 --output ./output-flux2
 
 # FLUX.1 Krea dev
-kuantala quantize black-forest-labs/FLUX.1-Krea-dev --dtype NVFP4 --output ./flux1-krea-nvfp4
+kuantala quantize black-forest-labs/FLUX.1-Krea-dev --dtype NVFP4 --output ./output-flux1-krea
 
 # LTX-2
-kuantala quantize Lightricks/LTX-2 --dtype NVFP4 --output ./ltx2-nvfp4
+kuantala quantize Lightricks/LTX-2 --dtype NVFP4 --output ./output-ltx2
 
 # Z-Image
-kuantala quantize Tongyi-MAI/Z-Image --dtype NVFP4 --output ./z-image-nvfp4
+kuantala quantize Tongyi-MAI/Z-Image --dtype NVFP4 --output ./output-z-image
 
 # Qwen-Image-2512
-kuantala quantize Qwen/Qwen-Image-2512 --dtype NVFP4 --output ./qwen-image-nvfp4
+kuantala quantize Qwen/Qwen-Image-2512 --dtype NVFP4 --output ./output-qwen-image
 
 # Qwen-Image-Edit-2511
-kuantala quantize Qwen/Qwen-Image-Edit-2511 --dtype NVFP4 --output ./qwen-image-edit-nvfp4
+kuantala quantize Qwen/Qwen-Image-Edit-2511 --dtype NVFP4 --output ./output-qwen-image-edit
 ```
 
 Norms (`FP32LayerNorm`, `RMSNorm`) and embeddings (`WanRotaryPosEmbed`) are already kept at original precision by modelopt.
