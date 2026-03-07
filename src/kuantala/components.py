@@ -102,7 +102,7 @@ def _has_safetensors(path: Path) -> bool:
 
 
 def detect_components(model_dir: Path) -> ModelInfo:
-    """Detect components from a diffusion model directory.
+    """Detect components from a model directory.
 
     Requires model_index.json (standard HuggingFace diffusers layout).
     """

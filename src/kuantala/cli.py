@@ -18,7 +18,7 @@ _QUANTIZABLE_TYPES = {"transformer", "unet", "vae", "text_encoder", "image_encod
 @click.group()
 @click.option("-v", "--verbose", is_flag=True, help="Enable debug logging.")
 def cli(verbose: bool) -> None:
-    """Kuantala - Quantize diffusion models to FP8 and NVFP4."""
+    """Kuantala - Quantize generative models."""
     setup_logging(verbose=verbose)
 
 
@@ -59,7 +59,7 @@ def quantize(
     nprompts: int,
     nsteps: int,
 ) -> None:
-    """Quantize a diffusion model.
+    """Quantize a generative model.
 
     MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.2-I2V-A14B-Diffusers)
     or a local directory path in diffusers format (with model_index.json).
@@ -112,7 +112,7 @@ def quantize(
 @click.argument("model", metavar="MODEL_ID_OR_PATH")
 @click.option("--show-all", is_flag=True, help="Show all components, including non-quantizable ones.")
 def components(model: str, show_all: bool) -> None:
-    """Show components of a diffusion model.
+    """Show components of a generative model.
 
     MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.2-I2V-A14B-Diffusers)
     or a local directory path in diffusers format (with model_index.json).
@@ -354,7 +354,7 @@ def estimate(model: str) -> None:
 @cli.command()
 @click.argument("model", metavar="MODEL_ID_OR_PATH")
 def config(model: str) -> None:
-    """Show the architecture of a diffusion model from its config.
+    """Show the architecture of a generative model from its config.
 
     Loads model configs (no weights) to show the full module hierarchy.
     Requires torch and diffusers/transformers to be installed.

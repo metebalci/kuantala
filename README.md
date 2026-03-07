@@ -1,6 +1,6 @@
 # Kuantala
 
-Quantize diffusion models (Wan2.x, FLUX, Stable Diffusion, etc.) to FP8 and NVFP4 formats using NVIDIA modelopt.
+Quantize generative models (Wan2.x, FLUX, LTX, etc.) using NVIDIA Model Optimizer.
 
 ## Installation
 
@@ -45,10 +45,10 @@ kuantala tensors ./output/transformer-FP8.safetensors
 
 ## How It Works
 
-Kuantala uses NVIDIA modelopt to quantize diffusion model components:
+Kuantala uses NVIDIA Model Optimizer to quantize model components:
 
 1. **Load** the full diffusers pipeline (transformer, text encoder, VAE, etc.) on CUDA
-2. **Quantize** with modelopt — inserts quantizer nodes and runs calibration by executing the pipeline with text prompts, producing realistic activations for optimal scale factor estimation
+2. **Quantize** with Model Optimizer — inserts quantizer nodes and runs calibration by executing the pipeline with text prompts, producing realistic activations for optimal scale factor estimation
 3. **Compress** — converts fake-quantized weights to real low-precision (FP8 or packed FP4)
 4. **Save** as safetensors with actual quantized weights
 
@@ -56,7 +56,7 @@ The output files are genuinely smaller and load into VRAM at low precision. FP8 
 
 ## ComfyUI Conversion
 
-Kuantala's NVFP4 output uses modelopt's internal format. To use NVFP4 models in ComfyUI, convert them first:
+Kuantala's NVFP4 output uses Model Optimizer's internal format. To use NVFP4 models in ComfyUI, convert them first:
 
 ```bash
 kuantala convert ./output/transformer-NVFP4.safetensors
@@ -75,7 +75,7 @@ kuantala convert ./wan-nvfp4/transformer-NVFP4.safetensors --remap-keys wan
 The conversion performs:
 - **Nibble swap** — reorders packed FP4 byte layout to match ComfyUI expectations
 - **Scale tiling** — converts block scales from plain to cuBLAS tiled layout
-- **Quantizer key renaming** — translates modelopt quantizer names to ComfyUI conventions
+- **Quantizer key renaming** — translates Model Optimizer quantizer names to ComfyUI conventions
 - **Layer key remapping** — translates diffusers layer names to original names (with `--remap-keys`)
 - **Metadata injection** — adds `.comfy_quant` entries required by ComfyUI
 
@@ -143,7 +143,7 @@ kuantala convert [OPTIONS] INPUT
 
 | Option | Description |
 |--------|-------------|
-| `INPUT` | Path to a modelopt NVFP4 `.safetensors` file (required) |
+| `INPUT` | Path to a Model Optimizer NVFP4 `.safetensors` file (required) |
 | `-o, --output` | Output file path (default: `{input_stem}-comfyui.safetensors`) |
 | `--remap-keys` | Remap diffusers key names to original: `wan` |
 
@@ -195,7 +195,7 @@ Use `--keep` to disable quantization on specific layers by glob pattern. Matched
 
 ## Default Keeps
 
-For known HuggingFace model IDs, kuantala automatically applies preset keep patterns that disable quantization on sensitive layers. These are based on [NVIDIA modelopt's example settings](https://github.com/NVIDIA/Model-Optimizer/blob/main/examples/diffusers/quantization/utils.py).
+For known HuggingFace model IDs, kuantala automatically applies preset keep patterns that disable quantization on sensitive layers. These are based on [NVIDIA Model Optimizer's example settings](https://github.com/NVIDIA/Model-Optimizer/blob/main/examples/diffusers/quantization/utils.py).
 
 | Preset | Models | Kept layers |
 |--------|--------|-------------|
@@ -231,7 +231,7 @@ kuantala quantize Qwen/Qwen-Image-2512 --dtype NVFP4 --output ./output-qwen-imag
 kuantala quantize Qwen/Qwen-Image-Edit-2511 --dtype NVFP4 --output ./output-qwen-image-edit
 ```
 
-Norms (`FP32LayerNorm`, `RMSNorm`) and embeddings (`WanRotaryPosEmbed`) are already kept at original precision by modelopt.
+Norms (`FP32LayerNorm`, `RMSNorm`) and embeddings (`WanRotaryPosEmbed`) are already kept at original precision by Model Optimizer.
 
 ## Python API
 

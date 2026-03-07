@@ -1,4 +1,4 @@
-"""Kuantala - Diffusion model quantization tool."""
+"""Kuantala - Generative model quantization tool."""
 
 
 def __getattr__(name: str):

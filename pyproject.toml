@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "kuantala"
 version = "0.2.0"
-description = "Quantize diffusion models to FP8 and NVFP4 formats using NVIDIA modelopt."
+description = "Quantize generative models using NVIDIA Model Optimizer."
 requires-python = ">=3.10,<3.13"
 license = "GPL-3.0-or-later"
 dependencies = [
