@@ -20,6 +20,70 @@ def is_passthrough_dtype(dtype: str) -> bool:
     return dtype in PASSTHROUGH_DTYPES
 
 
+# Default keep patterns per model family.
+# Based on NVIDIA modelopt examples:
+# https://github.com/NVIDIA/Model-Optimizer/blob/main/examples/diffusers/quantization/utils.py
+DEFAULT_KEEPS: dict[str, list[str]] = {
+    "wan": [
+        "*patch_embedding*",
+        "*condition_embedder*",
+        "*proj_out*",
+        "*blocks.0.*", "*blocks.1.*", "*blocks.2.*",
+        "*blocks.37.*", "*blocks.38.*", "*blocks.39.*",
+    ],
+    "flux": [
+        "*proj_out*",
+        "*time_text_embed*",
+        "*context_embedder*",
+        "*x_embedder*",
+        "*norm_out*",
+    ],
+    "ltx": [
+        "*proj_in*",
+        "*time_embed*",
+        "*caption_projection*",
+        "*proj_out*",
+        "*patchify_proj*",
+        "*adaln_single*",
+    ],
+}
+
+DEFAULT_KEEPS["z-image"] = [
+    "*t_embedder*",
+    "*cap_embedder*",
+    "*all_x_embedder*",
+    "*all_final_layer*",
+]
+
+DEFAULT_KEEPS["qwen-image"] = [
+    "*time_text_embed*",
+    "*img_in*",
+    "*txt_in*",
+    "*txt_norm*",
+    "*norm_out*",
+    "*proj_out*",
+]
+
+DEFAULT_KEEPS_NAMES = list(DEFAULT_KEEPS.keys())
+
+# Map HuggingFace model IDs to keep presets
+_MODEL_ID_TO_KEEPS: dict[str, str] = {
+    "Wan-AI/Wan2.2-I2V-A14B-Diffusers": "wan",
+    "Wan-AI/Wan2.2-T2V-A14B-Diffusers": "wan",
+    "black-forest-labs/FLUX.2-dev": "flux",
+    "black-forest-labs/FLUX.1-Krea-dev": "flux",
+    "Lightricks/LTX-2": "ltx",
+    "Tongyi-MAI/Z-Image": "z-image",
+    "Qwen/Qwen-Image-2512": "qwen-image",
+    "Qwen/Qwen-Image-Edit-2511": "qwen-image",
+}
+
+
+def detect_default_keeps(model_source: str) -> str | None:
+    """Auto-detect default keeps preset from HuggingFace model ID."""
+    return _MODEL_ID_TO_KEEPS.get(model_source)
+
+
 @dataclass
 class QuantConfig:
     """Configuration for a quantization job."""
@@ -36,6 +100,10 @@ class QuantConfig:
     # Calibration (random forward passes to determine optimal scale factors)
     calibration: bool = True
     calib_size: int = 4  # number of calibration batches
+
+    # Default keep preset (e.g. "wan", "flux", "ltx"); auto-detected for known model IDs
+    default_keeps: str | None = None
+    no_default_keeps: bool = False
 
     # Manual layer overrides: disable quantization on matched layer names
     keep: list[str] = field(default_factory=list)

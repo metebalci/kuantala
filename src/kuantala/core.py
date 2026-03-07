@@ -12,7 +12,7 @@ import modelopt.torch.quantization as mtq
 from safetensors.torch import save_file
 
 from kuantala.components import ModelComponent, detect_components
-from kuantala.config import QuantConfig, is_passthrough_dtype
+from kuantala.config import DEFAULT_KEEPS, QuantConfig, detect_default_keeps, is_passthrough_dtype
 from kuantala.model_loader import resolve_model_path
 from kuantala.utils import get_logger
 
@@ -196,6 +196,7 @@ def _restore_kv_cache_plugins(saved):
             pass
 
 
+
 def _disable_quantizers_by_pattern(model: torch.nn.Module, patterns: list[str]) -> None:
     """Disable quantizers on layers matching any of the given glob patterns."""
     import fnmatch
@@ -226,6 +227,8 @@ def _build_metadata(component: ModelComponent, dtype: str, config: QuantConfig) 
         meta["class_name"] = component.class_name
     if component.library:
         meta["library"] = component.library
+    if config.default_keeps:
+        meta["default_keeps"] = config.default_keeps
     if config.keep:
         meta["keep"] = json.dumps(config.keep)
     return meta
@@ -267,9 +270,17 @@ def _quantize_component(
         log.info("Applying %s quantization via modelopt...", dtype)
         mtq.quantize(model, quant_cfg, forward_loop=forward_loop)
 
-        # Disable quantizers on user-specified layers
-        if config.keep:
-            _disable_quantizers_by_pattern(model, config.keep)
+        # Resolve keep patterns: default preset + user overrides
+        all_keeps = list(config.keep)
+        preset = config.default_keeps
+        if preset is None and not config.no_default_keeps:
+            preset = detect_default_keeps(config.model_source)
+        if preset and preset in DEFAULT_KEEPS:
+            all_keeps = DEFAULT_KEEPS[preset] + all_keeps
+            log.info("Applied default keeps for '%s': %s", preset, DEFAULT_KEEPS[preset])
+
+        if all_keeps:
+            _disable_quantizers_by_pattern(model, all_keeps)
 
         import warnings
         log.info("Compressing weights to real %s...", dtype)

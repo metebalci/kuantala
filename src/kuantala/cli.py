@@ -8,7 +8,7 @@ from pathlib import Path
 import click
 from rich.table import Table
 
-from kuantala.config import ALL_DTYPES, COMPONENT_DTYPES
+from kuantala.config import ALL_DTYPES, COMPONENT_DTYPES, DEFAULT_KEEPS_NAMES
 from kuantala.utils import console, setup_logging
 
 # Component types that can be quantized
@@ -36,6 +36,9 @@ def cli(verbose: bool) -> None:
               default="skip", help="Image encoder quantization dtype (default: skip).")
 @click.option("--keep", multiple=True,
               help="Disable quantization on layers matching this glob pattern (repeatable).")
+@click.option("--use-default-keeps", type=click.Choice(DEFAULT_KEEPS_NAMES, case_sensitive=False),
+              default=None, help="Apply preset keep patterns (auto-detected for known HF model IDs).")
+@click.option("--no-default-keeps", is_flag=True, help="Disable auto-detected default keep patterns.")
 def quantize(
     model: str,
     dtype: str,
@@ -44,6 +47,8 @@ def quantize(
     te_dtype: str,
     ie_dtype: str,
     keep: tuple[str, ...],
+    use_default_keeps: str | None,
+    no_default_keeps: bool,
 ) -> None:
     """Quantize a diffusion model.
 
@@ -69,6 +74,8 @@ def quantize(
         vae_dtype=vae_dtype,
         te_dtype=te_dtype,
         ie_dtype=ie_dtype,
+        default_keeps=use_default_keeps,
+        no_default_keeps=no_default_keeps,
         keep=list(keep),
     )
 

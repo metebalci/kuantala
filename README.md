@@ -103,6 +103,8 @@ kuantala quantize [OPTIONS] MODEL
 | `--te-dtype` | Text encoder dtype (default: `skip`) |
 | `--ie-dtype` | Image encoder dtype (default: `skip`) |
 | `--keep PATTERN` | Disable quantization on layers matching this glob pattern (repeatable) |
+| `--use-default-keeps` | Apply preset keep patterns: `wan`, `flux`, `ltx`, `z-image`, `qwen-image` (auto-detected for known HF model IDs) |
+| `--no-default-keeps` | Disable auto-detected default keep patterns |
 
 ### `kuantala components`
 
@@ -188,33 +190,43 @@ kuantala quantize black-forest-labs/FLUX.1-dev \
 
 Use `--keep` to disable quantization on specific layers by glob pattern. Matched layers stay at their original precision. Time embeddings, conditioning projections, and input/output layers are small but sensitive — keeping them unquantized has negligible size impact but helps quality.
 
-## Model Recipes
+## Default Keeps
 
-### Wan 2.2 I2V 14B
+For known HuggingFace model IDs, kuantala automatically applies preset keep patterns that disable quantization on sensitive layers. These are based on [NVIDIA modelopt's example settings](https://github.com/NVIDIA/Model-Optimizer/blob/main/examples/diffusers/quantization/utils.py).
 
-Based on [NVIDIA modelopt's example settings](https://github.com/NVIDIA/Model-Optimizer/blob/main/examples/diffusers/quantization/utils.py):
+| Preset | Models | Kept layers |
+|--------|--------|-------------|
+| `wan` | Wan2.2-I2V-A14B, Wan2.2-T2V-A14B | patch_embedding, condition_embedder, proj_out, first/last 3 blocks |
+| `flux` | FLUX.2-dev, FLUX.1-Krea-dev | proj_out, time_text_embed, context_embedder, x_embedder, norm_out |
+| `ltx` | LTX-2 | proj_in, time_embed, caption_projection, proj_out, patchify_proj, adaln_single |
+| `z-image` | Z-Image | t_embedder, cap_embedder, all_x_embedder, all_final_layer |
+| `qwen-image` | Qwen-Image-2512, Qwen-Image-Edit-2511 | time_text_embed, img_in, txt_in, txt_norm, norm_out, proj_out |
+
+Use `--use-default-keeps <preset>` to explicitly select a preset (e.g. for local paths). Use `--no-default-keeps` to disable auto-detection.
 
 ```bash
-kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4 \
-    --keep "*patch_embedding*" \
-    --keep "*condition_embedder*" \
-    --keep "*proj_out*" \
-    --keep "*blocks.0.*" \
-    --keep "*blocks.1.*" \
-    --keep "*blocks.2.*" \
-    --keep "*blocks.37.*" \
-    --keep "*blocks.38.*" \
-    --keep "*blocks.39.*"
+# Wan 2.2 I2V / T2V 14B (keeps auto-detected)
+kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4 --output ./wan-nvfp4
+kuantala convert ./wan-nvfp4/transformer-NVFP4.safetensors --remap-keys wan
 
-# Convert for ComfyUI
-kuantala convert ./output/transformer-NVFP4.safetensors --remap-keys wan
+# FLUX.2 dev
+kuantala quantize black-forest-labs/FLUX.2-dev --dtype NVFP4 --output ./flux2-nvfp4
+
+# FLUX.1 Krea dev
+kuantala quantize black-forest-labs/FLUX.1-Krea-dev --dtype NVFP4 --output ./flux1-krea-nvfp4
+
+# LTX-2
+kuantala quantize Lightricks/LTX-2 --dtype NVFP4 --output ./ltx2-nvfp4
+
+# Z-Image
+kuantala quantize Tongyi-MAI/Z-Image --dtype NVFP4 --output ./z-image-nvfp4
+
+# Qwen-Image-2512
+kuantala quantize Qwen/Qwen-Image-2512 --dtype NVFP4 --output ./qwen-image-nvfp4
+
+# Qwen-Image-Edit-2511
+kuantala quantize Qwen/Qwen-Image-Edit-2511 --dtype NVFP4 --output ./qwen-image-edit-nvfp4
 ```
-
-Key layers kept at full precision:
-- `patch_embedding` — input Conv3d
-- `condition_embedder` — time embedding, text projection, conditioning
-- `proj_out` — output projection
-- First/last 3 blocks — most sensitive transformer layers
 
 Norms (`FP32LayerNorm`, `RMSNorm`) and embeddings (`WanRotaryPosEmbed`) are already kept at original precision by modelopt.
 
