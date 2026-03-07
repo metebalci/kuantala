@@ -259,7 +259,7 @@ output_files = quantize(config)
 | FP8 | 8-bit floating point (E4M3) | ~50% | Hopper+ (RTX 4000+) |
 | NVFP4 | NVIDIA 4-bit floating point | ~25% | Blackwell+ (RTX 5000+) |
 | FP16 | 16-bit floating point | 100% | Any |
-| BF16 | Brain floating point 16 | 100% | Ampere+ |
+| BF16 | Brain floating point 16 | 100% | Ampere+ (RTX 3000+) |
 
 ## Development
 
