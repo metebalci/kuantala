@@ -1,6 +1,6 @@
 # Kuantala
 
-Quantize generative models (Wan2.x, FLUX, LTX, etc.) using NVIDIA Model Optimizer.
+Kuantala quantizes generative models (Wan2.x, FLUX, LTX, etc.) using NVIDIA Model Optimizer and converts them to ComfyUI-compatible format.
 
 ## Installation
 
@@ -210,7 +210,6 @@ Use `--use-default-keeps <preset>` to explicitly select a preset (e.g. for local
 ```bash
 # Wan 2.2 I2V / T2V 14B (keeps auto-detected)
 kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4 --output ./output-wan
-kuantala convert ./output-wan/transformer-NVFP4.safetensors --remap-keys wan
 
 # FLUX.2 dev
 kuantala quantize black-forest-labs/FLUX.2-dev --dtype NVFP4 --output ./output-flux2
