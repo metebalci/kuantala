@@ -47,8 +47,8 @@ kuantala info
 
 Kuantala uses NVIDIA modelopt to quantize diffusion model components:
 
-1. **Load** each component (transformer, text encoder, etc.) via diffusers/transformers
-2. **Quantize** with modelopt — inserts quantizer nodes and runs calibration forward passes with random data to determine optimal scale factors
+1. **Load** the full diffusers pipeline (transformer, text encoder, VAE, etc.) on CUDA
+2. **Quantize** with modelopt — inserts quantizer nodes and runs calibration by executing the pipeline with text prompts, producing realistic activations for optimal scale factor estimation
 3. **Compress** — converts fake-quantized weights to real low-precision (FP8 or packed FP4)
 4. **Save** as safetensors with actual quantized weights
 
@@ -105,6 +105,9 @@ kuantala quantize [OPTIONS] MODEL
 | `--keep PATTERN` | Disable quantization on layers matching this glob pattern (repeatable) |
 | `--use-default-keeps` | Apply preset keep patterns: `wan`, `flux`, `ltx`, `z-image`, `qwen-image` (auto-detected for known HF model IDs) |
 | `--no-default-keeps` | Disable auto-detected default keep patterns |
+| `--prompts FILE` | File with calibration prompts, one per line (default: HF dataset) |
+| `--nprompts N` | Number of calibration prompts (default: 128) |
+| `--nsteps N` | Inference steps per calibration prompt (default: 30) |
 
 ### `kuantala components`
 

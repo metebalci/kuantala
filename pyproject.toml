@@ -13,6 +13,7 @@ dependencies = [
     "safetensors>=0.4",
     "rich>=13.0",
     "huggingface-hub",
+    "datasets",
     "diffusers",
     "accelerate",
     # nvidia-modelopt is pinned because each version requires a specific transformers range.

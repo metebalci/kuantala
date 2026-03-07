@@ -10,7 +10,7 @@ def test_valid_config():
     assert config.dtype == "FP8"
     assert config.vae_dtype == "skip"
     assert config.te_dtype == "skip"
-    assert config.calibration is True
+    assert config.calib_size == 128
 
 
 def test_valid_nvfp4():

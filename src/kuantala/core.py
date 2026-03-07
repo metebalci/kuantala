@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gc
 import importlib
+import inspect
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,22 @@ _TORCH_DTYPES = {
     "FP16": torch.float16,
     "BF16": torch.bfloat16,
 }
+
+# Default calibration prompt dataset (same as NVIDIA modelopt examples)
+_CALIB_DATASET = "Gustavosta/Stable-Diffusion-Prompts"
+_CALIB_DATASET_SPLIT = "train"
+_CALIB_DATASET_COLUMN = "Prompt"
+
+
+def _load_calib_prompts(num_prompts: int) -> list[str]:
+    """Load calibration prompts from the HuggingFace dataset."""
+    from datasets import load_dataset
+
+    log.info("Loading calibration prompts from %s...", _CALIB_DATASET)
+    dataset = load_dataset(_CALIB_DATASET, split=_CALIB_DATASET_SPLIT)
+    prompts = list(dataset[_CALIB_DATASET_COLUMN][:num_prompts])
+    log.info("Loaded %d calibration prompts", len(prompts))
+    return prompts
 
 
 def _resolve_component_dtype(
@@ -70,8 +87,72 @@ def _load_model(component: ModelComponent) -> torch.nn.Module:
     return model
 
 
-def _make_calibration_fn(model: Any, component: ModelComponent, num_batches: int = 4):
-    """Create a calibration forward_loop that feeds random data through the model."""
+def _load_pipeline(model_dir: Path) -> Any:
+    """Load the full diffusers pipeline for calibration."""
+    from diffusers import DiffusionPipeline
+
+    log.info("Loading pipeline from %s...", model_dir)
+    pipe = DiffusionPipeline.from_pretrained(str(model_dir), torch_dtype=torch.float16)
+    pipe.to("cuda")
+    log.info("Pipeline loaded on CUDA")
+    return pipe
+
+
+def _build_pipeline_kwargs(pipe: Any, num_inference_steps: int = 30) -> dict[str, Any]:
+    """Build kwargs for pipeline calibration calls based on its signature."""
+    params = inspect.signature(pipe.__call__).parameters
+
+    kwargs: dict[str, Any] = {"num_inference_steps": num_inference_steps}
+
+    # Skip VAE decoding for speed
+    if "output_type" in params:
+        kwargs["output_type"] = "latent"
+
+    # Video models need frame/dimension info
+    if "height" in params:
+        kwargs["height"] = 256
+    if "width" in params:
+        kwargs["width"] = 256
+    if "num_frames" in params:
+        kwargs["num_frames"] = 9  # satisfies (n-1)%4==0 for Wan
+
+    # I2V models need a conditioning image
+    if "image" in params:
+        param = params["image"]
+        if param.default is inspect.Parameter.empty:
+            # Required parameter — generate a random image
+            from PIL import Image
+            import numpy as np
+            kwargs["image"] = Image.fromarray(
+                np.random.randint(0, 255, (256, 256, 3), dtype=np.uint8)
+            )
+
+    return kwargs
+
+
+def _make_pipeline_calibration_fn(pipe: Any, prompts: list[str], num_inference_steps: int = 30) -> Any:
+    """Create a calibration forward_loop that runs the full pipeline."""
+    kwargs = _build_pipeline_kwargs(pipe, num_inference_steps)
+
+    def forward_loop(model: Any) -> None:
+        log.info("Running pipeline calibration with %d prompts...", len(prompts))
+        with torch.no_grad():
+            for i, prompt in enumerate(prompts):
+                log.info("  Calibration prompt %d/%d", i + 1, len(prompts))
+                try:
+                    pipe(prompt=prompt, **kwargs)
+                except Exception as e:
+                    log.warning("Pipeline calibration failed for prompt %d: %s", i + 1, e)
+
+    return forward_loop
+
+
+def _make_random_calibration_fn(model: Any, component: ModelComponent, num_batches: int = 4) -> Any:
+    """Create a calibration forward_loop that feeds random data through the model.
+
+    Used for non-transformer components (VAE, text encoder, image encoder) which
+    are rarely quantized and don't need the full pipeline.
+    """
     import json
 
     cfg = {}
@@ -83,7 +164,7 @@ def _make_calibration_fn(model: Any, component: ModelComponent, num_batches: int
     device = next(model.parameters()).device
     model_dtype = next(model.parameters()).dtype
 
-    def forward_loop(m):
+    def forward_loop(m: Any) -> None:
         log.info("Running calibration with random data (%d batches)...", num_batches)
         with torch.no_grad(), torch.autocast("cuda", dtype=model_dtype):
             for _ in range(num_batches):
@@ -93,40 +174,16 @@ def _make_calibration_fn(model: Any, component: ModelComponent, num_batches: int
 
 
 def _run_random_forward(model: Any, component_type: str, cfg: dict, device: Any, model_dtype: Any) -> None:
-    """Run a single forward pass with random inputs appropriate for the component type."""
+    """Run a single forward pass with random inputs appropriate for the component type.
+
+    Used for non-transformer components only.
+    """
     if component_type == "text_encoder":
         vocab_size = cfg.get("vocab_size", 32128)
         max_length = cfg.get("max_position_embeddings", 77)
         seq_len = min(max_length, 64)
         input_ids = torch.randint(0, vocab_size, (1, seq_len), device=device)
         model(input_ids=input_ids)
-
-    elif component_type in ("transformer", "unet"):
-        in_channels = cfg.get("in_channels", 4)
-        class_name = cfg.get("_class_name", "")
-
-        if "3D" in class_name or "Video" in class_name or "Wan" in class_name:
-            hidden_states = torch.randn(1, in_channels, 8, 16, 16, device=device, dtype=model_dtype)
-        else:
-            sample_size = cfg.get("sample_size", 64)
-            if isinstance(sample_size, list):
-                sample_size = sample_size[0]
-            s = min(sample_size, 32)
-            hidden_states = torch.randn(1, in_channels, s, s, device=device, dtype=model_dtype)
-
-        timestep = torch.randint(0, 1000, (1,), device=device)
-        text_dim = cfg.get("cross_attention_dim") or cfg.get("text_dim") or cfg.get("encoder_hid_dim", 768)
-        encoder_hidden_states = torch.randn(1, 16, text_dim, device=device, dtype=model_dtype)
-
-        try:
-            model(hidden_states, timestep=timestep, encoder_hidden_states=encoder_hidden_states)
-        except TypeError:
-            try:
-                model(hidden_states, timestep, encoder_hidden_states)
-            except Exception:
-                log.warning("Forward pass failed for %s, falling back to parameter activation", component_type)
-                for p in model.parameters():
-                    _ = p * 1.0
 
     elif component_type == "vae":
         in_channels = cfg.get("in_channels", 3)
@@ -196,7 +253,6 @@ def _restore_kv_cache_plugins(saved):
             pass
 
 
-
 def _disable_quantizers_by_pattern(model: torch.nn.Module, patterns: list[str]) -> None:
     """Disable quantizers on layers matching any of the given glob patterns."""
     import fnmatch
@@ -234,18 +290,31 @@ def _build_metadata(component: ModelComponent, dtype: str, config: QuantConfig) 
     return meta
 
 
-def _quantize_component(
+def _resolve_keeps(config: QuantConfig) -> list[str]:
+    """Resolve keep patterns: default preset + user overrides."""
+    all_keeps = list(config.keep)
+    preset = config.default_keeps
+    if preset is None and not config.no_default_keeps:
+        preset = detect_default_keeps(config.model_source)
+    if preset and preset in DEFAULT_KEEPS:
+        all_keeps = DEFAULT_KEEPS[preset] + all_keeps
+        log.info("Applied default keeps for '%s': %s", preset, DEFAULT_KEEPS[preset])
+    return all_keeps
+
+
+def _quantize_and_save(
+    model: torch.nn.Module,
     component: ModelComponent,
     dtype: str,
     config: QuantConfig,
     output_path: Path,
+    forward_loop: Any,
 ) -> Path:
-    """Quantize a single component and save to safetensors."""
+    """Quantize an already-loaded model and save to safetensors."""
+    import warnings
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_file = output_path.with_suffix(".safetensors")
-
-    model = _load_model(component)
-
     metadata = _build_metadata(component, dtype, config)
 
     # Passthrough: just cast and save
@@ -261,28 +330,15 @@ def _quantize_component(
     # Quantize with modelopt
     quant_cfg = _MODELOPT_CONFIGS[dtype]
 
-    def forward_loop(m): pass  # no-op when calibration disabled
-    if config.calibration:
-        forward_loop = _make_calibration_fn(model, component, config.calib_size)
-
     saved_plugins = _disable_kv_cache_plugins()
     try:
         log.info("Applying %s quantization via modelopt...", dtype)
         mtq.quantize(model, quant_cfg, forward_loop=forward_loop)
 
-        # Resolve keep patterns: default preset + user overrides
-        all_keeps = list(config.keep)
-        preset = config.default_keeps
-        if preset is None and not config.no_default_keeps:
-            preset = detect_default_keeps(config.model_source)
-        if preset and preset in DEFAULT_KEEPS:
-            all_keeps = DEFAULT_KEEPS[preset] + all_keeps
-            log.info("Applied default keeps for '%s': %s", preset, DEFAULT_KEEPS[preset])
-
+        all_keeps = _resolve_keeps(config)
         if all_keeps:
             _disable_quantizers_by_pattern(model, all_keeps)
 
-        import warnings
         log.info("Compressing weights to real %s...", dtype)
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="Real quantization has been applied")
@@ -296,7 +352,6 @@ def _quantize_component(
 
     file_size_mb = output_file.stat().st_size / (1024 * 1024)
     log.info("Written %s (%.1f MB)", output_file, file_size_mb)
-    del model
     return output_file
 
 
@@ -313,22 +368,59 @@ def quantize(config: QuantConfig) -> list[Path]:
     config.output_dir.mkdir(parents=True, exist_ok=True)
     output_files: list[Path] = []
 
+    # Categorize components
+    pipeline_components: list[tuple[ModelComponent, str]] = []
+    individual_components: list[tuple[ModelComponent, str]] = []
+
     for component in model_info.components:
         dtype = _resolve_component_dtype(component, config)
         if dtype is None:
             log.info("Skipping %s (dtype=skip)", component.name)
             continue
-
         if component.component_type in ("tokenizer", "scheduler", "other"):
             log.debug("Skipping non-quantizable component: %s", component.name)
             continue
 
+        # Transformer/UNet with real quantization → use pipeline calibration
+        if component.component_type in ("transformer", "unet") and not is_passthrough_dtype(dtype):
+            pipeline_components.append((component, dtype))
+        else:
+            individual_components.append((component, dtype))
+
+    # Quantize transformer/unet with pipeline-based calibration
+    if pipeline_components:
+        pipe = _load_pipeline(model_dir)
+        prompts = config.calib_prompts or _load_calib_prompts(config.calib_size)
+        if len(prompts) < config.calib_size:
+            log.warning("Only %d prompts available (requested %d)", len(prompts), config.calib_size)
+        prompts = prompts[:config.calib_size]
+        forward_loop = _make_pipeline_calibration_fn(pipe, prompts, config.calib_steps)
+
+        for component, dtype in pipeline_components:
+            log.info("Processing component: %s (%s -> %s)", component.name, component.component_type, dtype)
+            model = getattr(pipe, component.name)
+            output_path = config.output_dir / f"{component.name}-{dtype}"
+            output_file = _quantize_and_save(model, component, dtype, config, output_path, forward_loop)
+            output_files.append(output_file)
+
+        del pipe
+        torch.cuda.empty_cache()
+        gc.collect()
+
+    # Quantize other components individually (VAE, text encoder, etc.)
+    for component, dtype in individual_components:
         log.info("Processing component: %s (%s -> %s)", component.name, component.component_type, dtype)
+        model = _load_model(component)
+
+        if is_passthrough_dtype(dtype):
+            forward_loop = lambda m: None
+        else:
+            forward_loop = _make_random_calibration_fn(model, component, config.calib_size)
 
         output_path = config.output_dir / f"{component.name}-{dtype}"
-        output_file = _quantize_component(component, dtype, config, output_path)
+        output_file = _quantize_and_save(model, component, dtype, config, output_path, forward_loop)
         output_files.append(output_file)
-        # Free GPU memory for next component
+        del model
         torch.cuda.empty_cache()
         gc.collect()
 

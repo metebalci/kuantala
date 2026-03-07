@@ -101,9 +101,10 @@ class QuantConfig:
     te_dtype: str | None = "skip"
     ie_dtype: str | None = "skip"
 
-    # Calibration (random forward passes to determine optimal scale factors)
-    calibration: bool = True
-    calib_size: int = 4  # number of calibration batches
+    # Calibration (matches NVIDIA modelopt defaults)
+    calib_size: int = 128  # number of calibration prompts to use
+    calib_steps: int = 30  # number of inference steps per prompt
+    calib_prompts: list[str] | None = None  # custom prompts (default: HF dataset)
 
     # Default keep preset (e.g. "wan", "flux", "ltx"); auto-detected for known model IDs
     default_keeps: str | None = None

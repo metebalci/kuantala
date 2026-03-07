@@ -39,6 +39,12 @@ def cli(verbose: bool) -> None:
 @click.option("--use-default-keeps", type=click.Choice(DEFAULT_KEEPS_NAMES, case_sensitive=False),
               default=None, help="Apply preset keep patterns (auto-detected for known HF model IDs).")
 @click.option("--no-default-keeps", is_flag=True, help="Disable auto-detected default keep patterns.")
+@click.option("--prompts", type=click.Path(exists=True, path_type=Path), default=None,
+              help="File with calibration prompts, one per line (default: HF dataset).")
+@click.option("--nprompts", type=int, default=128,
+              help="Number of calibration prompts to use (default: 128).")
+@click.option("--nsteps", type=int, default=30,
+              help="Number of inference steps per calibration prompt (default: 30).")
 def quantize(
     model: str,
     dtype: str,
@@ -49,6 +55,9 @@ def quantize(
     keep: tuple[str, ...],
     use_default_keeps: str | None,
     no_default_keeps: bool,
+    prompts: Path | None,
+    nprompts: int,
+    nsteps: int,
 ) -> None:
     """Quantize a diffusion model.
 
@@ -67,6 +76,11 @@ def quantize(
     if ie_dtype.lower() != "skip":
         ie_dtype = ie_dtype.upper()
 
+    # Load custom calibration prompts from file if provided
+    prompt_list = None
+    if prompts is not None:
+        prompt_list = [line.strip() for line in prompts.read_text().splitlines() if line.strip()]
+
     config = QuantConfig(
         model_source=model,
         dtype=dtype,
@@ -76,6 +90,9 @@ def quantize(
         ie_dtype=ie_dtype,
         default_keeps=use_default_keeps,
         no_default_keeps=no_default_keeps,
+        calib_size=nprompts,
+        calib_steps=nsteps,
+        calib_prompts=prompt_list,
         keep=list(keep),
     )
 
