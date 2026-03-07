@@ -264,10 +264,10 @@ def info() -> None:
     table.add_column("Description")
 
     descriptions = {
-        "FP8": "8-bit floating point (E4M3), ~50% size reduction. Requires Hopper+ GPU.",
-        "NVFP4": "NVIDIA 4-bit floating point, ~75% size reduction. Requires Blackwell GPU.",
-        "FP16": "16-bit floating point (passthrough/conversion).",
-        "BF16": "Brain floating point 16 (passthrough/conversion).",
+        "FP8": "8-bit floating point (E4M3). Requires Hopper+ GPU.",
+        "NVFP4": "NVIDIA 4-bit floating point. Requires Blackwell+ GPU.",
+        "FP16": "16-bit floating point.",
+        "BF16": "Brain floating point 16.",
     }
 
     for dtype in ALL_DTYPES:

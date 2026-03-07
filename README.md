@@ -257,9 +257,9 @@ output_files = quantize(config)
 | Format | Description | Size vs FP16 | GPU Requirement |
 |--------|-------------|--------------|-----------------|
 | FP8 | 8-bit floating point (E4M3) | ~50% | Hopper+ (RTX 4000+) |
-| NVFP4 | NVIDIA 4-bit floating point | ~25% | Blackwell (RTX 5000+) |
-| FP16 | 16-bit float (passthrough) | 100% | Any |
-| BF16 | Brain float 16 (passthrough) | 100% | Ampere+ |
+| NVFP4 | NVIDIA 4-bit floating point | ~25% | Blackwell+ (RTX 5000+) |
+| FP16 | 16-bit floating point | 100% | Any |
+| BF16 | Brain floating point 16 | 100% | Ampere+ |
 
 ## Development
 
