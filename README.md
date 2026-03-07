@@ -27,8 +27,8 @@ kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype FP8 --output ./output
 # Quantize to NVFP4 (~75% size, fastest on Blackwell)
 kuantala quantize ./local-model --dtype NVFP4 --output ./output-model
 
-# Convert FP32 model to FP16
-kuantala quantize ./old-model --dtype FP16 --output ./output-model
+# Convert FP32 model to BF16
+kuantala quantize ./old-model --dtype BF16 --output ./output-model
 
 # Inspect model components
 kuantala components Wan-AI/Wan2.2-I2V-A14B-Diffusers
