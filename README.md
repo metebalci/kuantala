@@ -18,8 +18,11 @@ Kuantala requires models in **diffusers format** (with `model_index.json`). If a
 ## Quick Start
 
 ```bash
+# Show supported formats and default keep presets
+kuantala info
+
 # Quantize to FP8 (~50% size, ~2x inference speed on Hopper+/Blackwell)
-kuantala quantize Wan-AI/Wan2.1-I2V-14B-Diffusers --dtype FP8 --output ./output-wan
+kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype FP8 --output ./output-wan
 
 # Quantize to NVFP4 (~75% size, fastest on Blackwell)
 kuantala quantize ./local-model --dtype NVFP4 --output ./output-model
@@ -28,19 +31,16 @@ kuantala quantize ./local-model --dtype NVFP4 --output ./output-model
 kuantala quantize ./old-model --dtype FP16 --output ./output-model
 
 # Inspect model components
-kuantala components Wan-AI/Wan2.1-I2V-14B-Diffusers
+kuantala components Wan-AI/Wan2.2-I2V-A14B-Diffusers
 
 # Show model architecture from config (no weights downloaded)
-kuantala config Wan-AI/Wan2.1-I2V-14B-Diffusers
+kuantala config Wan-AI/Wan2.2-I2V-A14B-Diffusers
 
 # Estimate output sizes for all formats
-kuantala estimate Wan-AI/Wan2.1-I2V-14B-Diffusers
+kuantala estimate Wan-AI/Wan2.2-I2V-A14B-Diffusers
 
 # Inspect tensors in a quantized file
 kuantala tensors ./output/transformer-FP8.safetensors
-
-# Show supported formats and default keep presets
-kuantala info
 ```
 
 ## How It Works

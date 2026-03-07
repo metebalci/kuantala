@@ -61,7 +61,7 @@ def quantize(
 ) -> None:
     """Quantize a diffusion model.
 
-    MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.1-I2V-14B-Diffusers)
+    MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.2-I2V-A14B-Diffusers)
     or a local directory path in diffusers format (with model_index.json).
     """
     from kuantala.config import QuantConfig
@@ -114,7 +114,7 @@ def quantize(
 def components(model: str, show_all: bool) -> None:
     """Show components of a diffusion model.
 
-    MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.1-I2V-14B-Diffusers)
+    MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.2-I2V-A14B-Diffusers)
     or a local directory path in diffusers format (with model_index.json).
     """
     model_dir = _resolve_model_dir_cached(model)
@@ -359,7 +359,7 @@ def config(model: str) -> None:
     Loads model configs (no weights) to show the full module hierarchy.
     Requires torch and diffusers/transformers to be installed.
 
-    MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.1-I2V-14B-Diffusers)
+    MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.2-I2V-A14B-Diffusers)
     or a local directory path in diffusers format (with model_index.json).
     """
     import importlib

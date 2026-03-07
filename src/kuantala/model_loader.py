@@ -43,7 +43,7 @@ def resolve_model_path(source: str) -> Path:
         raise FileNotFoundError(
             f"'{source}' does not contain a model_index.json on HuggingFace Hub. "
             "Kuantala requires a diffusers-format model (with model_index.json). "
-            "Look for a '-Diffusers' variant of the model, e.g. 'Wan-AI/Wan2.1-I2V-14B-Diffusers'."
+            "Look for a '-Diffusers' variant of the model, e.g. 'Wan-AI/Wan2.2-I2V-A14B-Diffusers'."
         ) from e
 
     log.info("Downloading %s from HuggingFace Hub...", source)
