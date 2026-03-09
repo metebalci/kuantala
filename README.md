@@ -1,6 +1,6 @@
 # Kuantala
 
-Kuantala quantizes generative models (Wan2.x, FLUX, LTX, etc.) using NVIDIA Model Optimizer and converts them to ComfyUI-compatible format.
+Kuantala quantizes diffusers-format generative models to NVFP4 (or FP8) using NVIDIA Model Optimizer. It can also convert the quantized output to ComfyUI-compatible format, evaluate quantization quality, and inspect model components.
 
 ## Installation
 
