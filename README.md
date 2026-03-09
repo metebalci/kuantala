@@ -221,14 +221,6 @@ kuantala quantize [OPTIONS] MODEL
 | `--ie-dtype` | Image encoder dtype (default: `skip`) |
 | `--cfg` | Quantization config preset: `default`, `awq_lite`, `awq_clip`, `awq_full` (default: `default`, see below) |
 | `--algorithm` | Advanced: override calibration algorithm (default: auto, see below) |
-
-Quantization config presets (`--cfg`):
-- `default` — Standard quantization with `max` calibration. Fastest, good baseline.
-- `awq_lite` — Activation-aware weight quantization with lightweight search. Better quality than default, moderate overhead.
-- `awq_clip` — AWQ with clipping-based optimization. Good quality/speed tradeoff.
-- `awq_full` — AWQ with full search. Slowest, best quality. NVFP4 only.
-
-The `--algorithm` option is an advanced setting that overrides the calibration algorithm used by the selected config preset. Most users should use `--cfg` instead. Available algorithms: `max`, `smoothquant`, `awq_lite`, `awq_full`, `mse`.
 | `--keep PATTERN` | Disable quantization on layers matching this glob pattern (repeatable) |
 | `--use-default-keeps` | Apply preset keep patterns: `wan`, `flux`, `ltx`, `z-image`, `qwen-image` (auto-detected for known HF model IDs) |
 | `--no-default-keeps` | Disable auto-detected default keep patterns |
@@ -238,6 +230,14 @@ The `--algorithm` option is an advanced setting that overrides the calibration a
 | `--resolution` | Calibration resolution: `480p`, `540p`, `720p`, `1080p`, `4k`, or `HEIGHTxWIDTH` (default: `480p`) |
 | `--psrc` | Prompt source: `t2i`, `t2v`, `i2v`, `ti2i` (auto-detected for known HF model IDs) |
 | `--offload` | CPU offload mode: `model` (component-level) or `layers` (layer-level, slower but less VRAM) |
+
+Quantization config presets (`--cfg`):
+- `default` — Standard quantization with `max` calibration. Fastest, good baseline.
+- `awq_lite` — Activation-aware weight quantization with lightweight search. Better quality than default, moderate overhead.
+- `awq_clip` — AWQ with clipping-based optimization. Good quality/speed tradeoff.
+- `awq_full` — AWQ with full search. Slowest, best quality. NVFP4 only.
+
+The `--algorithm` option is an advanced setting that overrides the calibration algorithm used by the selected config preset. Most users should use `--cfg` instead. Available algorithms: `max`, `smoothquant`, `awq_lite`, `awq_full`, `mse`.
 
 ### `kuantala tensors`
 
