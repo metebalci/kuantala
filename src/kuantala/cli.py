@@ -438,7 +438,7 @@ def info() -> None:
         "NVFP4": "NVIDIA 4-bit floating point. Requires Blackwell+ GPU.",
     }
 
-    for dtype in DTYPES:
+    for dtype in sorted(DTYPES):
         table.add_row(dtype, descriptions.get(dtype, ""))
 
     console.print(table)
@@ -447,7 +447,7 @@ def info() -> None:
     keeps_table.add_column("Preset", style="cyan")
     keeps_table.add_column("Patterns")
 
-    for name in DEFAULT_KEEPS_NAMES:
+    for name in sorted(DEFAULT_KEEPS):
         patterns = ", ".join(DEFAULT_KEEPS[name])
         keeps_table.add_row(name, patterns)
 
@@ -462,7 +462,7 @@ def info() -> None:
     models_table.add_column("Resolution")
     models_table.add_column("Steps")
 
-    for model_id in sorted(MODEL_DEFAULTS):
+    for model_id in sorted(MODEL_DEFAULTS, key=str.casefold):
         defaults = MODEL_DEFAULTS[model_id]
         h, w = defaults.get("resolution", (0, 0))
         models_table.add_row(

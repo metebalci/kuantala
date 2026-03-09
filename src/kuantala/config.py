@@ -55,22 +55,6 @@ DEFAULT_KEEPS["cogvideox"] = [
     "*proj_out*",
 ]
 
-DEFAULT_KEEPS["lumina-image"] = [
-    "*x_embedder*",
-    "*time_caption_embed*",
-    "*norm_out*",
-]
-
-DEFAULT_KEEPS["omnigen"] = [
-    "*patch_embedding*",
-    "*time_token*",
-    "*t_embedder*",
-    "*embed_tokens*",
-    "*norm_out*",
-    "*proj_out*",
-    "*layers.[0-2].*",
-    "*layers.3[5-7].*",
-]
 
 DEFAULT_KEEPS["z-image"] = [
     "*t_embedder*",
@@ -102,20 +86,13 @@ DEFAULT_KEEPS["sdxl"] = [
     "*pos_embed*",
 ]
 
-DEFAULT_KEEPS["pixart"] = [
-    "*time_emb_proj*",
-    "*time_embedding*",
-    "*pos_embed*",
-    "*x_embedder*",
-    "*norm_out*",
-]
-
 DEFAULT_KEEPS_NAMES = list(DEFAULT_KEEPS.keys())
 
 
 # Per-model defaults: keeps, prompt source, resolution, steps, num_frames.
 # resolution is (height, width).
 MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
+    # Wan models
     "Wan-AI/Wan2.2-I2V-A14B-Diffusers": {
         "keeps": "wan", "psrc": "i2v",
         "resolution": (720, 1280), "steps": 40, "num_frames": 81,
@@ -124,21 +101,73 @@ MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         "keeps": "wan", "psrc": "t2v",
         "resolution": (720, 1280), "steps": 40, "num_frames": 81,
     },
-    "black-forest-labs/FLUX.2-dev": {
+    # FLUX models
+    "black-forest-labs/FLUX.1-dev": {
         "keeps": "flux", "psrc": "t2i",
+        "resolution": (1024, 1024), "steps": 50,
+    },
+    "black-forest-labs/FLUX.1-schnell": {
+        "keeps": "flux", "psrc": "t2i",
+        "resolution": (1024, 1024), "steps": 4,
+    },
+    "black-forest-labs/FLUX.1-Kontext-dev": {
+        "keeps": "flux", "psrc": "ti2i",
         "resolution": (1024, 1024), "steps": 28,
     },
     "black-forest-labs/FLUX.1-Krea-dev": {
         "keeps": "flux", "psrc": "t2i",
         "resolution": (1024, 1024), "steps": 28,
     },
+    "black-forest-labs/FLUX.2-dev": {
+        "keeps": "flux", "psrc": "t2i",
+        "resolution": (1024, 1024), "steps": 28,
+    },
+    "black-forest-labs/FLUX.2-klein-base-9B": {
+        "keeps": "flux", "psrc": "t2i",
+        "resolution": (1024, 1024), "steps": 50,
+    },
+    # Stability AI models
+    "stabilityai/stable-diffusion-xl-base-1.0": {
+        "keeps": "sdxl", "psrc": "t2i",
+        "resolution": (1024, 1024), "steps": 30,
+    },
+    "stabilityai/sdxl-turbo": {
+        "keeps": "sdxl", "psrc": "t2i",
+        "resolution": (512, 512), "steps": 1,
+    },
+    "stabilityai/stable-video-diffusion-img2vid-xt-1-1": {
+        "keeps": "sdxl", "psrc": "i2v",
+        "resolution": (576, 1024), "steps": 25, "num_frames": 25,
+    },
+    # CogVideoX models
+    "zai-org/CogVideoX-5b": {
+        "keeps": "cogvideox", "psrc": "t2v",
+        "resolution": (480, 720), "steps": 50, "num_frames": 49,
+    },
+    "zai-org/CogVideoX-5b-I2V": {
+        "keeps": "cogvideox", "psrc": "i2v",
+        "resolution": (480, 720), "steps": 50, "num_frames": 49,
+    },
+    # Other image models
+    "HiDream-ai/HiDream-I1-Full": {
+        "psrc": "t2i",
+        "resolution": (1024, 1024), "steps": 50,
+    },
+    "HiDream-ai/HiDream-E1-1": {
+        "psrc": "ti2i",
+        "resolution": (768, 768), "steps": 28,
+    },
     "Lightricks/LTX-2": {
         "keeps": "ltx", "psrc": "t2v",
         "resolution": (512, 768), "steps": 40, "num_frames": 121,
     },
-    "Tongyi-MAI/Z-Image": {
-        "keeps": "z-image", "psrc": "t2i",
-        "resolution": (720, 1280), "steps": 50,
+    "nvidia/Cosmos-Predict2-14B-Text2Image": {
+        "psrc": "t2i",
+        "resolution": (768, 1360), "steps": 35,
+    },
+    "nvidia/Cosmos-Predict2-14B-Video2World": {
+        "psrc": "i2v",
+        "resolution": (704, 1280), "steps": 35, "num_frames": 93,
     },
     "Qwen/Qwen-Image-2512": {
         "keeps": "qwen-image", "psrc": "t2i",
@@ -148,29 +177,13 @@ MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
         "keeps": "qwen-image", "psrc": "ti2i",
         "resolution": (1328, 1328), "steps": 50,
     },
-    "Alpha-VLLM/Lumina-Image-2.0": {
-        "keeps": "lumina-image", "psrc": "t2i",
-        "resolution": (1024, 1024), "steps": 50,
+    "Tongyi-MAI/Z-Image": {
+        "keeps": "z-image", "psrc": "t2i",
+        "resolution": (720, 1280), "steps": 50,
     },
-    "zai-org/CogVideoX-2b": {
-        "keeps": "cogvideox", "psrc": "t2v",
-        "resolution": (480, 720), "steps": 50, "num_frames": 49,
-    },
-    "zai-org/CogVideoX-5b-I2V": {
-        "keeps": "cogvideox", "psrc": "i2v",
-        "resolution": (480, 720), "steps": 50, "num_frames": 49,
-    },
-    "Shitao/OmniGen-v1-diffusers": {
-        "keeps": "omnigen", "psrc": "ti2i",
-        "resolution": (1024, 1024), "steps": 50,
-    },
-    "stabilityai/stable-diffusion-xl-base-1.0": {
-        "keeps": "sdxl", "psrc": "t2i",
-        "resolution": (1024, 1024), "steps": 30,
-    },
-    "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS": {
-        "keeps": "pixart", "psrc": "t2i",
-        "resolution": (1024, 1024), "steps": 20,
+    "Tongyi-MAI/Z-Image-Turbo": {
+        "keeps": "z-image", "psrc": "t2i",
+        "resolution": (1024, 1024), "steps": 9,
     },
 }
 

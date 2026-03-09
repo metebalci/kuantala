@@ -51,15 +51,20 @@ _CLASS_MAP: dict[str, str] = {
     "diffusers.PixArtTransformer2DModel": "transformer",
     "diffusers.LTXVideoTransformer3DModel": "transformer",
     "diffusers.MochiTransformer3DModel": "transformer",
+    "diffusers.CosmosTransformer3DModel": "transformer",
+    "diffusers.HiDreamImageTransformer2DModel": "transformer",
+    "diffusers.ZImageTransformer2DModel": "transformer",
     # UNets (diffusers)
     "diffusers.UNet2DConditionModel": "unet",
     "diffusers.UNet2DModel": "unet",
     "diffusers.UNet3DConditionModel": "unet",
+    "diffusers.UNetSpatioTemporalConditionModel": "unet",
     # VAEs (diffusers)
     "diffusers.AutoencoderKL": "vae",
     "diffusers.AutoencoderKLWan": "vae",
     "diffusers.AutoencoderDC": "vae",
     "diffusers.AutoencoderTiny": "vae",
+    "diffusers.AutoencoderKLCogVideoX": "vae",
     "diffusers.VQModel": "vae",
     # Text encoders (transformers)
     "transformers.CLIPTextModel": "text_encoder",
@@ -67,11 +72,15 @@ _CLASS_MAP: dict[str, str] = {
     "transformers.T5EncoderModel": "text_encoder",
     "transformers.UMT5EncoderModel": "text_encoder",
     "transformers.ChatGLMModel": "text_encoder",
+    "transformers.LlamaForCausalLM": "text_encoder",
+    "transformers.Qwen3Model": "text_encoder",
     # Tokenizers (transformers)
     "transformers.CLIPTokenizer": "tokenizer",
     "transformers.T5Tokenizer": "tokenizer",
     "transformers.T5TokenizerFast": "tokenizer",
     "transformers.AutoTokenizer": "tokenizer",
+    "transformers.Qwen2Tokenizer": "tokenizer",
+    "transformers.LlamaTokenizerFast": "tokenizer",
     # Schedulers (diffusers)
     "diffusers.FlowMatchEulerDiscreteScheduler": "scheduler",
     "diffusers.EulerDiscreteScheduler": "scheduler",
@@ -81,9 +90,12 @@ _CLASS_MAP: dict[str, str] = {
     "diffusers.DDIMScheduler": "scheduler",
     "diffusers.UniPCMultistepScheduler": "scheduler",
     "diffusers.FlowMatchHeunDiscreteScheduler": "scheduler",
+    "diffusers.CogVideoXDDIMScheduler": "scheduler",
     # Image encoders
     "transformers.CLIPVisionModelWithProjection": "image_encoder",
     "transformers.SiglipVisionModel": "image_encoder",
+    # Feature extractors
+    "transformers.CLIPImageProcessor": "feature_extractor",
 }
 
 
