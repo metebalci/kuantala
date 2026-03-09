@@ -232,12 +232,19 @@ kuantala quantize [OPTIONS] MODEL
 | `--offload` | CPU offload mode: `model` (component-level) or `layers` (layer-level, slower but less VRAM) |
 
 Quantization config presets (`--cfg`):
-- `default` — Standard quantization with `max` calibration. Fastest, good baseline.
-- `awq_lite` — Activation-aware weight quantization with lightweight search. Better quality than default, moderate overhead.
-- `awq_clip` — AWQ with clipping-based optimization. Good quality/speed tradeoff.
+- `default` — Standard quantization with `max` calibration. Fastest, good baseline. Works with FP8 and NVFP4.
+- `awq_lite` — Activation-aware weight quantization with lightweight search. Better quality than default, moderate overhead. NVFP4 only.
+- `awq_clip` — AWQ with clipping-based optimization. Good quality/speed tradeoff. NVFP4 only.
 - `awq_full` — AWQ with full search. Slowest, best quality. NVFP4 only.
 
-The `--algorithm` option is an advanced setting that overrides the calibration algorithm used by the selected config preset. Most users should use `--cfg` instead. Available algorithms: `max`, `smoothquant`, `awq_lite`, `awq_full`, `mse`.
+The `--algorithm` option is an advanced setting that overrides the calibration algorithm used by the selected config preset. Most users should use `--cfg` instead.
+
+Calibration algorithms (`--algorithm`):
+- `max` — Scale factors from max absolute values. Fastest, good default.
+- `smoothquant` — Migrates quantization difficulty from activations to weights for better accuracy.
+- `awq_lite` — Searches per-channel scaling factors to minimize quantization error.
+- `awq_full` — Combines per-channel scaling and per-block clipping search. Slowest, best quality.
+- `mse` — Minimizes mean squared error between original and quantized outputs.
 
 ### `kuantala tensors`
 
