@@ -20,12 +20,6 @@ pip install torch --index-url https://download.pytorch.org/whl/cu130
 pip install kuantala
 ```
 
-**Blackwell GPUs:** The stable PyTorch release may have CUBLAS errors on Blackwell. If you hit `CUBLAS_STATUS_INVALID_VALUE`, install a nightly build instead:
-
-```bash
-pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu130
-```
-
 Kuantala requires models in **diffusers format** (with `model_index.json`). If a model has both a raw and a diffusers variant on HuggingFace, use the diffusers one (typically suffixed with `-Diffusers`).
 
 ## Quick Start

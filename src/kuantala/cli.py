@@ -456,7 +456,7 @@ def info() -> None:
     from kuantala.config import MODEL_DEFAULTS
 
     models_table = Table(title="Known Models", title_style="bold", caption="*: Active parameters (MoE)", caption_style="")
-    models_table.add_column("Model ID", style="cyan", no_wrap=False)
+    models_table.add_column("Model ID", style="cyan")
     models_table.add_column("Size")
     models_table.add_column("Keep\nPreset")
     models_table.add_column("Prompt\nSource")
@@ -466,10 +466,8 @@ def info() -> None:
     for model_id in sorted(MODEL_DEFAULTS, key=str.casefold):
         defaults = MODEL_DEFAULTS[model_id]
         h, w = defaults.get("resolution", (0, 0))
-        # Insert zero-width spaces after / and - to allow wrapping
-        display_id = model_id.replace("/", "/\u200b").replace("-", "-\u200b")
         models_table.add_row(
-            display_id,
+            model_id,
             defaults.get("size", ""),
             defaults.get("keeps", ""),
             defaults.get("psrc", ""),
