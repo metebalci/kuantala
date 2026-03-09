@@ -2,7 +2,9 @@
 
 Kuantala quantizes diffusers-format generative models to NVFP4 (or FP8) using NVIDIA Model Optimizer. It can also convert the quantized output to ComfyUI-compatible format, evaluate quantization quality, and inspect model components.
 
-NVFP4 quantization is **W4A4** (4-bit weights, 4-bit activations). Weights are stored as FP4 E2M1 packed in uint8, with FP8 per-block scales. Activation scales (`input_quantizer._amax`) are calibrated during quantization, enabling native FP4 tensor core math on Blackwell GPUs for both memory savings and compute speedups.
+NVFP4 is W4A4 (4-bit weights, 4-bit activations). Weights are stored as FP4 E2M1 packed in uint8, with FP8 per-block scales. Activation scales are calibrated during quantization, enabling native FP4 tensor core math on Blackwell+ GPUs for both memory savings and compute speedups.
+
+FP8 is W8A8 (8-bit weights, 8-bit activations). Weights are stored as float8 E4M3 with per-tensor scales. Activation scales are calibrated during quantization, enabling native FP8 tensor core math on Hopper+ GPUs.
 
 ## Installation
 
