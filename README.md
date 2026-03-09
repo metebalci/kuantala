@@ -4,14 +4,17 @@ Kuantala quantizes generative models (Wan2.x, FLUX, LTX, etc.) using NVIDIA Mode
 
 ## Installation
 
+Requires Python ≤ 3.12 due to `nvidia-modelopt` constraints. Tested on Linux.
+
 ```bash
+python -m venv .venv
+source .venv/bin/activate
+
 # First install PyTorch with CUDA from https://pytorch.org
 pip install torch --index-url https://download.pytorch.org/whl/cu130
 
 pip install kuantala
 ```
-
-Requires Python ≤ 3.12 due to `nvidia-modelopt` constraints.
 
 Kuantala requires models in **diffusers format** (with `model_index.json`). If a model has both a raw and a diffusers variant on HuggingFace, use the diffusers one (typically suffixed with `-Diffusers`).
 
