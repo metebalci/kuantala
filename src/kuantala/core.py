@@ -20,10 +20,13 @@ from kuantala.utils import get_logger
 
 log = get_logger(__name__)
 
-# modelopt quantization configs for each dtype
+# modelopt quantization configs: (dtype, cfg_preset) -> modelopt config dict
 _MODELOPT_CONFIGS = {
-    "FP8": mtq.FP8_DEFAULT_CFG,
-    "NVFP4": mtq.NVFP4_DEFAULT_CFG,
+    ("FP8", "default"): mtq.FP8_DEFAULT_CFG,
+    ("NVFP4", "default"): mtq.NVFP4_DEFAULT_CFG,
+    ("NVFP4", "awq_lite"): mtq.NVFP4_AWQ_LITE_CFG,
+    ("NVFP4", "awq_clip"): mtq.NVFP4_AWQ_CLIP_CFG,
+    ("NVFP4", "awq_full"): mtq.NVFP4_AWQ_FULL_CFG,
 }
 
 # Configs for auto_quantize (AWQ_LITE recommended for NVFP4)
@@ -393,6 +396,7 @@ def _build_metadata(component: ModelComponent, dtype: str, config: QuantConfig) 
     meta: dict[str, str] = {
         "quantizer": "kuantala",
         "dtype": dtype,
+        "cfg": config.cfg,
         "model_source": config.model_source,
         "component": component.name,
     }
@@ -434,11 +438,18 @@ def _quantize_and_save(
     output_file = output_path.with_suffix(".safetensors")
     metadata = _build_metadata(component, dtype, config)
 
-    quant_cfg = {**_MODELOPT_CONFIGS[dtype], "algorithm": config.algorithm}
+    cfg_key = (dtype, config.cfg)
+    if cfg_key not in _MODELOPT_CONFIGS:
+        # FP8 only has "default"; fall back to default for unsupported combos
+        cfg_key = (dtype, "default")
+    quant_cfg = {**_MODELOPT_CONFIGS[cfg_key]}
+    if config.algorithm is not None:
+        quant_cfg["algorithm"] = config.algorithm
 
+    algo = quant_cfg.get("algorithm", "N/A")
     saved_plugins = _disable_kv_cache_plugins()
     try:
-        log.info("Applying %s quantization (algorithm=%s) via modelopt...", dtype, config.algorithm)
+        log.info("Applying %s quantization (cfg=%s, algorithm=%s) via modelopt...", dtype, config.cfg, algo)
         model.cuda()
         mtq.quantize(model, quant_cfg, forward_loop=forward_loop)
 
@@ -743,7 +754,7 @@ def _load_quantized_component(
 
     saved_sd = load_file(str(quantized_file))
 
-    quant_cfg = _MODELOPT_CONFIGS[dtype]
+    quant_cfg = _MODELOPT_CONFIGS[(dtype, "default")]
     saved_plugins = _disable_kv_cache_plugins()
     try:
         mtq.quantize(model, quant_cfg, forward_loop=None)

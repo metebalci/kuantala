@@ -219,14 +219,16 @@ kuantala quantize [OPTIONS] MODEL
 | `--vae-dtype` | VAE dtype (default: `skip`). Same choices as `--dtype` plus `skip` |
 | `--te-dtype` | Text encoder dtype (default: `skip`) |
 | `--ie-dtype` | Image encoder dtype (default: `skip`) |
-| `--algorithm` | Calibration algorithm (default: `max`, see below) |
+| `--cfg` | Quantization config preset: `default`, `awq_lite`, `awq_clip`, `awq_full` (default: `default`, see below) |
+| `--algorithm` | Advanced: override calibration algorithm (default: auto, see below) |
 
-Calibration algorithms:
-- `max` — Scale factors from max absolute values. Fastest, good default.
-- `smoothquant` — Migrates quantization difficulty from activations to weights for better accuracy.
-- `awq_lite` — Activation-aware weight quantization with lightweight search.
-- `awq_full` — Activation-aware weight quantization with full search. Slowest, best quality.
-- `mse` — Minimizes mean squared error between original and quantized outputs.
+Quantization config presets (`--cfg`):
+- `default` — Standard quantization with `max` calibration. Fastest, good baseline.
+- `awq_lite` — Activation-aware weight quantization with lightweight search. Better quality than default, moderate overhead.
+- `awq_clip` — AWQ with clipping-based optimization. Good quality/speed tradeoff.
+- `awq_full` — AWQ with full search. Slowest, best quality. NVFP4 only.
+
+The `--algorithm` option is an advanced setting that overrides the calibration algorithm used by the selected config preset. Most users should use `--cfg` instead. Available algorithms: `max`, `smoothquant`, `awq_lite`, `awq_full`, `mse`.
 | `--keep PATTERN` | Disable quantization on layers matching this glob pattern (repeatable) |
 | `--use-default-keeps` | Apply preset keep patterns: `wan`, `flux`, `ltx`, `z-image`, `qwen-image` (auto-detected for known HF model IDs) |
 | `--no-default-keeps` | Disable auto-detected default keep patterns |
@@ -282,15 +284,12 @@ For known HuggingFace model IDs, kuantala automatically applies preset keep patt
 | Preset | Models | Kept layers |
 |--------|--------|-------------|
 | `wan` | Wan2.2-I2V-A14B, Wan2.2-T2V-A14B | patch_embedding, condition_embedder, proj_out, first/last 3 blocks |
-| `flux` | FLUX.2-dev, FLUX.1-Krea-dev | proj_out, time_text_embed, context_embedder, x_embedder, norm_out |
+| `flux` | FLUX.1-dev/schnell/Kontext-dev/Krea-dev, FLUX.2-dev/klein | proj_out, time_text_embed, context_embedder, x_embedder, norm_out |
 | `ltx` | LTX-2 | proj_in, time_embed, caption_projection, proj_out, patchify_proj, adaln_single |
-| `cogvideox` | CogVideoX-2b, CogVideoX-5b-I2V | patch_embed, time_embedding, norm_final, norm_out, proj_out |
-| `lumina-image` | Lumina-Image-2.0 | x_embedder, time_caption_embed, norm_out |
-| `omnigen` | OmniGen-v1 | patch_embedding, time_token, t_embedder, embed_tokens, norm_out, proj_out, first/last 3 layers |
-| `z-image` | Z-Image | t_embedder, cap_embedder, all_x_embedder, all_final_layer, first/last 3 layers |
+| `cogvideox` | CogVideoX-5b, CogVideoX-5b-I2V | patch_embed, time_embedding, norm_final, norm_out, proj_out |
+| `z-image` | Z-Image, Z-Image-Turbo | t_embedder, cap_embedder, all_x_embedder, all_final_layer, first/last 3 layers |
 | `qwen-image` | Qwen-Image-2512, Qwen-Image-Edit-2511 | time_text_embed, img_in, txt_in, txt_norm, norm_out, proj_out, first/last 3 transformer_blocks |
-| `sdxl` | SDXL 1.0 | time_emb_proj, time_embedding, conv_in, conv_out, conv_shortcut, add_embedding, pos_embed |
-| `pixart` | PixArt-Sigma | time_emb_proj, time_embedding, pos_embed, x_embedder, norm_out |
+| `sdxl` | SDXL 1.0, SDXL Turbo, SVD | time_emb_proj, time_embedding, conv_in, conv_out, conv_shortcut, add_embedding, pos_embed |
 
 Use `--use-default-keeps <preset>` to explicitly select a preset (e.g. for local paths). Use `--no-default-keeps` to disable auto-detection.
 
@@ -298,11 +297,11 @@ Use `--use-default-keeps <preset>` to explicitly select a preset (e.g. for local
 # Wan 2.2 I2V / T2V 14B (keeps auto-detected)
 kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4
 
+# FLUX.1 dev
+kuantala quantize black-forest-labs/FLUX.1-dev --dtype NVFP4
+
 # FLUX.2 dev
 kuantala quantize black-forest-labs/FLUX.2-dev --dtype NVFP4
-
-# FLUX.1 Krea dev
-kuantala quantize black-forest-labs/FLUX.1-Krea-dev --dtype NVFP4
 
 # LTX-2
 kuantala quantize Lightricks/LTX-2 --dtype NVFP4
@@ -313,26 +312,14 @@ kuantala quantize Tongyi-MAI/Z-Image --dtype NVFP4
 # Qwen-Image-2512
 kuantala quantize Qwen/Qwen-Image-2512 --dtype NVFP4
 
-# Qwen-Image-Edit-2511
-kuantala quantize Qwen/Qwen-Image-Edit-2511 --dtype NVFP4
+# CogVideoX-5b
+kuantala quantize zai-org/CogVideoX-5b --dtype FP8
 
-# Lumina-Image-2.0
-kuantala quantize Alpha-VLLM/Lumina-Image-2.0 --dtype FP8
-
-# CogVideoX-2b
-kuantala quantize zai-org/CogVideoX-2b --dtype FP8
-
-# CogVideoX-5b-I2V
-kuantala quantize zai-org/CogVideoX-5b-I2V --dtype FP8
-
-# OmniGen-v1
-kuantala quantize Shitao/OmniGen-v1-diffusers --dtype FP8
-
-# SDXL 1.0 (UNet, ~7 GB total)
+# SDXL 1.0
 kuantala quantize stabilityai/stable-diffusion-xl-base-1.0 --dtype FP8
 
-# PixArt-Sigma (transformer, ~11 GB total)
-kuantala quantize PixArt-alpha/PixArt-Sigma-XL-2-1024-MS --dtype FP8
+# With AWQ config preset for better quality
+kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4 --cfg awq_lite
 ```
 
 Norms (`FP32LayerNorm`, `RMSNorm`) and embeddings (`WanRotaryPosEmbed`) are already kept at original precision by Model Optimizer.

@@ -8,7 +8,7 @@ from pathlib import Path
 import click
 from rich.table import Table
 
-from kuantala.config import DTYPES, CALIB_ALGORITHMS, COMPONENT_DTYPES, DEFAULT_KEEPS, DEFAULT_KEEPS_NAMES, PROMPT_SOURCES
+from kuantala.config import DTYPES, QUANT_CONFIGS, CALIB_ALGORITHMS, COMPONENT_DTYPES, DEFAULT_KEEPS, DEFAULT_KEEPS_NAMES, PROMPT_SOURCES
 from kuantala.utils import console, setup_logging
 
 # Component types that can be quantized
@@ -39,8 +39,10 @@ def cli(verbose: bool) -> None:
 @click.option("--use-default-keeps", type=click.Choice(DEFAULT_KEEPS_NAMES, case_sensitive=False),
               default=None, help="Apply preset keep patterns (auto-detected for known HF model IDs).")
 @click.option("--no-default-keeps", is_flag=True, help="Disable auto-detected default keep patterns.")
+@click.option("--cfg", type=click.Choice(QUANT_CONFIGS, case_sensitive=False),
+              default="default", help="Quantization config preset (default: default).")
 @click.option("--algorithm", type=click.Choice(CALIB_ALGORITHMS, case_sensitive=False),
-              default="max", help="Calibration algorithm (default: max).")
+              default=None, help="Advanced: override calibration algorithm.")
 @click.option("--prompts", type=click.Path(exists=True, path_type=Path), default=None,
               help="File with calibration prompts, one per line (default: HF dataset).")
 @click.option("--nprompts", type=int, default=32,
@@ -63,7 +65,8 @@ def quantize(
     keep: tuple[str, ...],
     use_default_keeps: str | None,
     no_default_keeps: bool,
-    algorithm: str,
+    cfg: str,
+    algorithm: str | None,
     prompts: Path | None,
     nprompts: int,
     nsteps: int | None,
@@ -113,6 +116,7 @@ def quantize(
         vae_dtype=vae_dtype,
         te_dtype=te_dtype,
         ie_dtype=ie_dtype,
+        cfg=cfg,
         algorithm=algorithm,
         default_keeps=use_default_keeps,
         no_default_keeps=no_default_keeps,
@@ -442,6 +446,24 @@ def info() -> None:
         table.add_row(dtype, descriptions.get(dtype, ""))
 
     console.print(table)
+
+    cfg_table = Table(title="Config Presets (--cfg)", title_style="bold")
+    cfg_table.add_column("Preset", style="")
+    cfg_table.add_column("Algorithm")
+    cfg_table.add_column("Description")
+
+    cfg_descriptions = {
+        "default": ("max", "Simple max absolute value for scales. Fast."),
+        "awq_lite": ("awq_lite", "Searches per-channel scaling factors. Slower, better quality."),
+        "awq_clip": ("awq_clip", "Searches per-block clipping values. Even slower."),
+        "awq_full": ("awq_full", "Lite + clip combined. Slowest, best quality."),
+    }
+
+    for name in QUANT_CONFIGS:
+        algo, desc = cfg_descriptions.get(name, ("", ""))
+        cfg_table.add_row(name, algo, desc)
+
+    console.print(cfg_table)
 
     keeps_table = Table(title="Default Keep Presets", title_style="bold")
     keeps_table.add_column("Preset", style="")
@@ -889,7 +911,8 @@ def _generate_quantize_markdown(config: object, output_files: list[Path]) -> str
         "|---|---|",
         f"| Original model | `{config.model_source}` |",
         f"| Quantization dtype | {config.dtype} |",
-        f"| Algorithm | {config.algorithm} |",
+        f"| Config preset | {config.cfg} |",
+        f"| Algorithm | {config.algorithm or '(from preset)'} |",
         f"| Calibration prompts | {config.calib_size} from {_prompt_source_markdown(_resolve_prompt_source(config))} |",
         f"| Calibration steps | {config.calib_steps} |",
         f"| Calibration resolution | {h}x{w} |",

@@ -12,7 +12,10 @@ DTYPES = ["FP8", "NVFP4"]
 # Types allowed as per-component overrides (including skip)
 COMPONENT_DTYPES = DTYPES + ["skip"]
 
-# Calibration algorithms supported by modelopt
+# Quantization config presets (maps to modelopt CFG dicts)
+QUANT_CONFIGS = ["default", "awq_lite", "awq_clip", "awq_full"]
+
+# Calibration algorithms supported by modelopt (advanced)
 CALIB_ALGORITHMS = ["max", "smoothquant", "awq_lite", "awq_full", "mse"]
 
 # Prompt sources — determines which HF dataset to use for calibration and eval
@@ -217,7 +220,8 @@ class QuantConfig:
     ie_dtype: str | None = "skip"
 
     # Calibration
-    algorithm: str = "max"  # calibration algorithm (max, smoothquant, awq_lite, awq_full, mse)
+    cfg: str = "default"  # quantization config preset (default, awq_lite, awq_clip, awq_full)
+    algorithm: str | None = None  # advanced: override calibration algorithm
     calib_size: int = 32  # number of calibration prompts to use
     calib_steps: int = 30  # number of inference steps per prompt
     calib_resolution: tuple[int, int] = (480, 848)  # (height, width) for calibration
@@ -242,7 +246,12 @@ class QuantConfig:
                 f"Unknown dtype {self.dtype!r}. "
                 f"Choose from: {', '.join(DTYPES)}"
             )
-        if self.algorithm not in CALIB_ALGORITHMS:
+        if self.cfg not in QUANT_CONFIGS:
+            raise ValueError(
+                f"Unknown cfg {self.cfg!r}. "
+                f"Choose from: {', '.join(QUANT_CONFIGS)}"
+            )
+        if self.algorithm is not None and self.algorithm not in CALIB_ALGORITHMS:
             raise ValueError(
                 f"Unknown algorithm {self.algorithm!r}. "
                 f"Choose from: {', '.join(CALIB_ALGORITHMS)}"
