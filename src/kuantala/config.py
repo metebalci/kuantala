@@ -15,6 +15,9 @@ ALL_DTYPES = QUANT_DTYPES + PASSTHROUGH_DTYPES
 # Types allowed as per-component overrides (including skip)
 COMPONENT_DTYPES = ALL_DTYPES + ["skip"]
 
+# Calibration algorithms supported by modelopt
+CALIB_ALGORITHMS = ["max", "smoothquant", "awq_lite", "awq_full", "mse"]
+
 
 def is_passthrough_dtype(dtype: str) -> bool:
     return dtype in PASSTHROUGH_DTYPES
@@ -101,9 +104,11 @@ class QuantConfig:
     te_dtype: str | None = "skip"
     ie_dtype: str | None = "skip"
 
-    # Calibration (matches NVIDIA modelopt defaults)
-    calib_size: int = 128  # number of calibration prompts to use
+    # Calibration
+    algorithm: str = "max"  # calibration algorithm (max, smoothquant, awq_lite, awq_full, mse)
+    calib_size: int = 256  # number of calibration prompts to use
     calib_steps: int = 30  # number of inference steps per prompt
+    calib_resolution: tuple[int, int] = (480, 848)  # (height, width) for calibration
     calib_prompts: list[str] | None = None  # custom prompts (default: HF dataset)
 
     # Default keep preset (e.g. "wan", "flux", "ltx"); auto-detected for known model IDs
@@ -119,6 +124,11 @@ class QuantConfig:
             raise ValueError(
                 f"Unknown dtype {self.dtype!r}. "
                 f"Choose from: {', '.join(ALL_DTYPES)}"
+            )
+        if self.algorithm not in CALIB_ALGORITHMS:
+            raise ValueError(
+                f"Unknown algorithm {self.algorithm!r}. "
+                f"Choose from: {', '.join(CALIB_ALGORITHMS)}"
             )
         for field_name, value in [("vae_dtype", self.vae_dtype), ("te_dtype", self.te_dtype), ("ie_dtype", self.ie_dtype)]:
             if value is not None and value not in COMPONENT_DTYPES:

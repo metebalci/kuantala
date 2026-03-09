@@ -8,7 +8,7 @@ from pathlib import Path
 import click
 from rich.table import Table
 
-from kuantala.config import ALL_DTYPES, COMPONENT_DTYPES, DEFAULT_KEEPS, DEFAULT_KEEPS_NAMES
+from kuantala.config import ALL_DTYPES, CALIB_ALGORITHMS, COMPONENT_DTYPES, DEFAULT_KEEPS, DEFAULT_KEEPS_NAMES
 from kuantala.utils import console, setup_logging
 
 # Component types that can be quantized
@@ -39,12 +39,16 @@ def cli(verbose: bool) -> None:
 @click.option("--use-default-keeps", type=click.Choice(DEFAULT_KEEPS_NAMES, case_sensitive=False),
               default=None, help="Apply preset keep patterns (auto-detected for known HF model IDs).")
 @click.option("--no-default-keeps", is_flag=True, help="Disable auto-detected default keep patterns.")
+@click.option("--algorithm", type=click.Choice(CALIB_ALGORITHMS, case_sensitive=False),
+              default="max", help="Calibration algorithm (default: max).")
 @click.option("--prompts", type=click.Path(exists=True, path_type=Path), default=None,
               help="File with calibration prompts, one per line (default: HF dataset).")
-@click.option("--nprompts", type=int, default=128,
-              help="Number of calibration prompts to use (default: 128).")
+@click.option("--nprompts", type=int, default=256,
+              help="Number of calibration prompts to use (default: 256).")
 @click.option("--nsteps", type=int, default=30,
               help="Number of inference steps per calibration prompt (default: 30).")
+@click.option("--resolution", type=str, default="480p",
+              help="Calibration resolution: 480p, 540p, 720p, 1080p, 4k, or HEIGHTxWIDTH (default: 480p).")
 def quantize(
     model: str,
     dtype: str,
@@ -55,9 +59,11 @@ def quantize(
     keep: tuple[str, ...],
     use_default_keeps: str | None,
     no_default_keeps: bool,
+    algorithm: str,
     prompts: Path | None,
     nprompts: int,
     nsteps: int,
+    resolution: str,
 ) -> None:
     """Quantize a generative model.
 
@@ -71,6 +77,19 @@ def quantize(
     if output is None:
         safe_name = model.replace("/", "-").strip("-")
         output = Path(f"output-{safe_name}")
+
+    # Parse resolution
+    _RESOLUTION_PRESETS = {"480p": (480, 848), "540p": (540, 960), "720p": (720, 1280), "1080p": (1080, 1920), "4k": (2160, 3840)}
+    if resolution.lower() in _RESOLUTION_PRESETS:
+        calib_resolution = _RESOLUTION_PRESETS[resolution.lower()]
+    else:
+        try:
+            h, w = resolution.lower().split("x")
+            calib_resolution = (int(h), int(w))
+        except (ValueError, AttributeError):
+            raise click.BadParameter(
+                f"Invalid resolution: {resolution!r}. Use 480p, 540p, 720p, 1080p, 4k, or HEIGHTxWIDTH."
+            )
 
     # Normalize case
     dtype = dtype.upper()
@@ -93,10 +112,12 @@ def quantize(
         vae_dtype=vae_dtype,
         te_dtype=te_dtype,
         ie_dtype=ie_dtype,
+        algorithm=algorithm,
         default_keeps=use_default_keeps,
         no_default_keeps=no_default_keeps,
         calib_size=nprompts,
         calib_steps=nsteps,
+        calib_resolution=calib_resolution,
         calib_prompts=prompt_list,
         keep=list(keep),
     )

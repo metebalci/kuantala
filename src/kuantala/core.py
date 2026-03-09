@@ -98,9 +98,12 @@ def _load_pipeline(model_dir: Path) -> Any:
     return pipe
 
 
-def _build_pipeline_kwargs(pipe: Any, num_inference_steps: int = 30) -> dict[str, Any]:
+def _build_pipeline_kwargs(
+    pipe: Any, num_inference_steps: int = 30, resolution: tuple[int, int] = (256, 256)
+) -> dict[str, Any]:
     """Build kwargs for pipeline calibration calls based on its signature."""
     params = inspect.signature(pipe.__call__).parameters
+    height, width = resolution
 
     kwargs: dict[str, Any] = {"num_inference_steps": num_inference_steps}
 
@@ -110,9 +113,9 @@ def _build_pipeline_kwargs(pipe: Any, num_inference_steps: int = 30) -> dict[str
 
     # Video models need frame/dimension info
     if "height" in params:
-        kwargs["height"] = 256
+        kwargs["height"] = height
     if "width" in params:
-        kwargs["width"] = 256
+        kwargs["width"] = width
     if "num_frames" in params:
         kwargs["num_frames"] = 9  # satisfies (n-1)%4==0 for Wan
 
@@ -124,15 +127,17 @@ def _build_pipeline_kwargs(pipe: Any, num_inference_steps: int = 30) -> dict[str
             from PIL import Image
             import numpy as np
             kwargs["image"] = Image.fromarray(
-                np.random.randint(0, 255, (256, 256, 3), dtype=np.uint8)
+                np.random.randint(0, 255, (height, width, 3), dtype=np.uint8)
             )
 
     return kwargs
 
 
-def _make_pipeline_calibration_fn(pipe: Any, prompts: list[str], num_inference_steps: int = 30) -> Any:
+def _make_pipeline_calibration_fn(
+    pipe: Any, prompts: list[str], num_inference_steps: int = 30, resolution: tuple[int, int] = (256, 256)
+) -> Any:
     """Create a calibration forward_loop that runs the full pipeline."""
-    kwargs = _build_pipeline_kwargs(pipe, num_inference_steps)
+    kwargs = _build_pipeline_kwargs(pipe, num_inference_steps, resolution)
 
     def forward_loop(model: Any) -> None:
         log.info("Running pipeline calibration with %d prompts...", len(prompts))
@@ -328,11 +333,11 @@ def _quantize_and_save(
         return output_file
 
     # Quantize with modelopt
-    quant_cfg = _MODELOPT_CONFIGS[dtype]
+    quant_cfg = {**_MODELOPT_CONFIGS[dtype], "algorithm": config.algorithm}
 
     saved_plugins = _disable_kv_cache_plugins()
     try:
-        log.info("Applying %s quantization via modelopt...", dtype)
+        log.info("Applying %s quantization (algorithm=%s) via modelopt...", dtype, config.algorithm)
         mtq.quantize(model, quant_cfg, forward_loop=forward_loop)
 
         all_keeps = _resolve_keeps(config)
@@ -394,7 +399,7 @@ def quantize(config: QuantConfig) -> list[Path]:
         if len(prompts) < config.calib_size:
             log.warning("Only %d prompts available (requested %d)", len(prompts), config.calib_size)
         prompts = prompts[:config.calib_size]
-        forward_loop = _make_pipeline_calibration_fn(pipe, prompts, config.calib_steps)
+        forward_loop = _make_pipeline_calibration_fn(pipe, prompts, config.calib_steps, config.calib_resolution)
 
         for component, dtype in pipeline_components:
             log.info("Processing component: %s (%s -> %s)", component.name, component.component_type, dtype)

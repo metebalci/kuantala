@@ -108,12 +108,14 @@ kuantala quantize [OPTIONS] MODEL
 | `--vae-dtype` | VAE dtype (default: `skip`). Same choices as `--dtype` plus `skip` |
 | `--te-dtype` | Text encoder dtype (default: `skip`) |
 | `--ie-dtype` | Image encoder dtype (default: `skip`) |
+| `--algorithm` | Calibration algorithm: `max`, `smoothquant`, `awq_lite`, `awq_full`, `mse` (default: `max`) |
 | `--keep PATTERN` | Disable quantization on layers matching this glob pattern (repeatable) |
 | `--use-default-keeps` | Apply preset keep patterns: `wan`, `flux`, `ltx`, `z-image`, `qwen-image` (auto-detected for known HF model IDs) |
 | `--no-default-keeps` | Disable auto-detected default keep patterns |
 | `--prompts FILE` | File with calibration prompts, one per line (default: HF dataset) |
-| `--nprompts N` | Number of calibration prompts (default: 128) |
+| `--nprompts N` | Number of calibration prompts (default: 256) |
 | `--nsteps N` | Inference steps per calibration prompt (default: 30) |
+| `--resolution` | Calibration resolution: `480p`, `540p`, `720p`, `1080p`, `4k`, or `HEIGHTxWIDTH` (default: `480p`) |
 
 ### `kuantala components`
 
