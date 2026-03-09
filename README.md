@@ -220,7 +220,7 @@ kuantala quantize [OPTIONS] MODEL
 | `--te-dtype` | Text encoder dtype (default: `skip`) |
 | `--ie-dtype` | Image encoder dtype (default: `skip`) |
 | `--cfg` | Quantization config preset: `default`, `awq_lite`, `awq_clip`, `awq_full` (default: `default`, see below) |
-| `--algorithm` | Advanced: override calibration algorithm (default: auto, see below) |
+| `--alpha-step` | Search step size for `awq_full` (default: 0.1, smaller = finer search, slower) |
 | `--keep PATTERN` | Disable quantization on layers matching this glob pattern (repeatable) |
 | `--use-default-keeps` | Apply preset keep patterns: `wan`, `flux`, `ltx`, `z-image`, `qwen-image` (auto-detected for known HF model IDs) |
 | `--no-default-keeps` | Disable auto-detected default keep patterns |
@@ -235,16 +235,8 @@ Quantization config presets (`--cfg`):
 - `default` — Standard quantization with `max` calibration. Fastest, good baseline. Works with FP8 and NVFP4.
 - `awq_lite` — Activation-aware weight quantization with lightweight search. Better quality than default, moderate overhead. NVFP4 only.
 - `awq_clip` — AWQ with clipping-based optimization. Good quality/speed tradeoff. NVFP4 only.
-- `awq_full` — AWQ with full search. Slowest, best quality. NVFP4 only.
+- `awq_full` — AWQ with full search (lite + clip). Slowest, best quality. NVFP4 only. Use `--alpha-step` to control search granularity (default: 0.1).
 
-The `--algorithm` option is an advanced setting that overrides the calibration algorithm used by the selected config preset. Most users should use `--cfg` instead.
-
-Calibration algorithms (`--algorithm`):
-- `max` — Scale factors from max absolute values. Fastest, good default.
-- `smoothquant` — Migrates quantization difficulty from activations to weights for better accuracy.
-- `awq_lite` — Searches per-channel scaling factors to minimize quantization error.
-- `awq_full` — Combines per-channel scaling and per-block clipping search. Slowest, best quality.
-- `mse` — Minimizes mean squared error between original and quantized outputs.
 
 ### `kuantala tensors`
 

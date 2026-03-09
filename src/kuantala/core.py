@@ -443,13 +443,12 @@ def _quantize_and_save(
         # FP8 only has "default"; fall back to default for unsupported combos
         cfg_key = (dtype, "default")
     quant_cfg = {**_MODELOPT_CONFIGS[cfg_key]}
-    if config.algorithm is not None:
-        quant_cfg["algorithm"] = config.algorithm
+    if config.alpha_step is not None and isinstance(quant_cfg.get("algorithm"), dict):
+        quant_cfg["algorithm"] = {**quant_cfg["algorithm"], "alpha_step": config.alpha_step}
 
-    algo = quant_cfg.get("algorithm", "N/A")
     saved_plugins = _disable_kv_cache_plugins()
     try:
-        log.info("Applying %s quantization (cfg=%s, algorithm=%s) via modelopt...", dtype, config.cfg, algo)
+        log.info("Applying %s quantization (cfg=%s) via modelopt...", dtype, config.cfg)
         model.cuda()
         mtq.quantize(model, quant_cfg, forward_loop=forward_loop)
 

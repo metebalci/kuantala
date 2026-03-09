@@ -15,9 +15,6 @@ COMPONENT_DTYPES = DTYPES + ["skip"]
 # Quantization config presets (maps to modelopt CFG dicts)
 QUANT_CONFIGS = ["default", "awq_lite", "awq_clip", "awq_full"]
 
-# Calibration algorithms supported by modelopt (advanced)
-CALIB_ALGORITHMS = ["max", "smoothquant", "awq_lite", "awq_full", "mse"]
-
 # Prompt sources — determines which HF dataset to use for calibration and eval
 PROMPT_SOURCES = ["t2i", "t2v", "i2v", "ti2i"]
 
@@ -221,7 +218,7 @@ class QuantConfig:
 
     # Calibration
     cfg: str = "default"  # quantization config preset (default, awq_lite, awq_clip, awq_full)
-    algorithm: str | None = None  # advanced: override calibration algorithm
+    alpha_step: float | None = None  # awq_full: search step size (default: 0.1, smaller = finer search)
     calib_size: int = 32  # number of calibration prompts to use
     calib_steps: int = 30  # number of inference steps per prompt
     calib_resolution: tuple[int, int] = (480, 848)  # (height, width) for calibration
@@ -250,11 +247,6 @@ class QuantConfig:
             raise ValueError(
                 f"Unknown cfg {self.cfg!r}. "
                 f"Choose from: {', '.join(QUANT_CONFIGS)}"
-            )
-        if self.algorithm is not None and self.algorithm not in CALIB_ALGORITHMS:
-            raise ValueError(
-                f"Unknown algorithm {self.algorithm!r}. "
-                f"Choose from: {', '.join(CALIB_ALGORITHMS)}"
             )
         for field_name, value in [("vae_dtype", self.vae_dtype), ("te_dtype", self.te_dtype), ("ie_dtype", self.ie_dtype)]:
             if value is not None and value not in COMPONENT_DTYPES:

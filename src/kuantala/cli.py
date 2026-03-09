@@ -8,7 +8,7 @@ from pathlib import Path
 import click
 from rich.table import Table
 
-from kuantala.config import DTYPES, QUANT_CONFIGS, CALIB_ALGORITHMS, COMPONENT_DTYPES, DEFAULT_KEEPS, DEFAULT_KEEPS_NAMES, PROMPT_SOURCES
+from kuantala.config import DTYPES, QUANT_CONFIGS, COMPONENT_DTYPES, DEFAULT_KEEPS, DEFAULT_KEEPS_NAMES, PROMPT_SOURCES
 from kuantala.utils import console, setup_logging
 
 # Component types that can be quantized
@@ -41,8 +41,8 @@ def cli(verbose: bool) -> None:
 @click.option("--no-default-keeps", is_flag=True, help="Disable auto-detected default keep patterns.")
 @click.option("--cfg", type=click.Choice(QUANT_CONFIGS, case_sensitive=False),
               default="default", help="Quantization config preset (default: default).")
-@click.option("--algorithm", type=click.Choice(CALIB_ALGORITHMS, case_sensitive=False),
-              default=None, help="Advanced: override calibration algorithm.")
+@click.option("--alpha-step", type=float, default=None,
+              help="AWQ full search step size (default: 0.1, smaller = finer search, only with --cfg awq_full).")
 @click.option("--prompts", type=click.Path(exists=True, path_type=Path), default=None,
               help="File with calibration prompts, one per line (default: HF dataset).")
 @click.option("--nprompts", type=int, default=32,
@@ -66,7 +66,7 @@ def quantize(
     use_default_keeps: str | None,
     no_default_keeps: bool,
     cfg: str,
-    algorithm: str | None,
+    alpha_step: float | None,
     prompts: Path | None,
     nprompts: int,
     nsteps: int | None,
@@ -117,7 +117,7 @@ def quantize(
         te_dtype=te_dtype,
         ie_dtype=ie_dtype,
         cfg=cfg,
-        algorithm=algorithm,
+        alpha_step=alpha_step,
         default_keeps=use_default_keeps,
         no_default_keeps=no_default_keeps,
         calib_size=nprompts,
@@ -912,7 +912,6 @@ def _generate_quantize_markdown(config: object, output_files: list[Path]) -> str
         f"| Original model | `{config.model_source}` |",
         f"| Quantization dtype | {config.dtype} |",
         f"| Config preset | {config.cfg} |",
-        f"| Algorithm | {config.algorithm or '(from preset)'} |",
         f"| Calibration prompts | {config.calib_size} from {_prompt_source_markdown(_resolve_prompt_source(config))} |",
         f"| Calibration steps | {config.calib_steps} |",
         f"| Calibration resolution | {h}x{w} |",
