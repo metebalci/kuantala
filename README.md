@@ -30,9 +30,6 @@ kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype FP8
 # Quantize to NVFP4 (~75% size, fastest on Blackwell)
 kuantala quantize ./local-model --dtype NVFP4
 
-# Convert FP32 model to BF16
-kuantala quantize ./old-model --dtype BF16
-
 # Inspect model components
 kuantala components Wan-AI/Wan2.2-I2V-A14B-Diffusers
 
@@ -106,7 +103,7 @@ kuantala quantize [OPTIONS] MODEL
 | Option | Description |
 |--------|-------------|
 | `MODEL` | HuggingFace diffusers model ID or local directory path (required) |
-| `-d, --dtype` | Target format: `FP8`, `NVFP4`, `FP16`, `BF16` (required) |
+| `-d, --dtype` | Target format: `FP8`, `NVFP4` (required) |
 | `-o, --output` | Output directory (default: `output-<MODEL_ID>`) |
 | `--vae-dtype` | VAE dtype (default: `skip`). Same choices as `--dtype` plus `skip` |
 | `--te-dtype` | Text encoder dtype (default: `skip`) |
@@ -254,7 +251,7 @@ Schedulers, tokenizers, and other non-neural components are always skipped. VAE 
 kuantala quantize black-forest-labs/FLUX.1-dev \
     --dtype FP8 \
     --vae-dtype skip \
-    --te-dtype FP16
+    --te-dtype FP8
 ```
 
 ## Layer-Level Control
@@ -355,8 +352,6 @@ output_files = quantize(config)
 |--------|-------------|--------------|-----------------|
 | FP8 | 8-bit floating point (E4M3) | ~50% | Hopper+ (RTX 4000+) |
 | NVFP4 | NVIDIA 4-bit floating point | ~25% | Blackwell+ (RTX 5000+) |
-| FP16 | 16-bit floating point | 100% | Any |
-| BF16 | Brain floating point 16 | 100% | Ampere+ (RTX 3000+) |
 
 ## Development
 

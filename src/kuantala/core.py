@@ -14,7 +14,7 @@ import modelopt.torch.quantization as mtq
 from safetensors.torch import save_file
 
 from kuantala.components import ModelComponent, detect_components
-from kuantala.config import DEFAULT_KEEPS, QuantConfig, detect_default_keeps, detect_prompt_source, is_passthrough_dtype
+from kuantala.config import DEFAULT_KEEPS, QuantConfig, detect_default_keeps, detect_prompt_source
 from kuantala.model_loader import resolve_model_path
 from kuantala.utils import get_logger
 
@@ -30,11 +30,6 @@ _MODELOPT_CONFIGS = {
 _AUTO_QUANTIZE_CONFIGS = {
     "FP8": mtq.FP8_DEFAULT_CFG,
     "NVFP4": mtq.NVFP4_AWQ_LITE_CFG,
-}
-
-_TORCH_DTYPES = {
-    "FP16": torch.float16,
-    "BF16": torch.bfloat16,
 }
 
 # Prompt datasets per source type.
@@ -432,17 +427,6 @@ def _quantize_and_save(
     output_file = output_path.with_suffix(".safetensors")
     metadata = _build_metadata(component, dtype, config)
 
-    # Passthrough: just cast and save
-    if is_passthrough_dtype(dtype):
-        target_dtype = _TORCH_DTYPES[dtype]
-        model = model.to(target_dtype)
-        state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
-        save_file(state_dict, str(output_file), metadata=metadata)
-        file_size_mb = output_file.stat().st_size / (1024 * 1024)
-        log.info("Written %s (%.1f MB)", output_file, file_size_mb)
-        return output_file
-
-    # Quantize with modelopt
     quant_cfg = {**_MODELOPT_CONFIGS[dtype], "algorithm": config.algorithm}
 
     saved_plugins = _disable_kv_cache_plugins()
@@ -496,8 +480,7 @@ def quantize(config: QuantConfig) -> list[Path]:
             log.debug("Skipping non-quantizable component: %s", component.name)
             continue
 
-        # Transformer/UNet with real quantization → use pipeline calibration
-        if component.component_type in ("transformer", "unet") and not is_passthrough_dtype(dtype):
+        if component.component_type in ("transformer", "unet"):
             pipeline_components.append((component, dtype))
         else:
             individual_components.append((component, dtype))
@@ -535,10 +518,7 @@ def quantize(config: QuantConfig) -> list[Path]:
         log.info("Processing component: %s (%s -> %s)", component.name, component.component_type, dtype)
         model = _load_model(component)
 
-        if is_passthrough_dtype(dtype):
-            forward_loop = lambda m: None
-        else:
-            forward_loop = _make_random_calibration_fn(model, component, config.calib_size)
+        forward_loop = _make_random_calibration_fn(model, component, config.calib_size)
 
         output_path = config.output_dir / f"{component.name}-{dtype}"
         output_file = _quantize_and_save(model, component, dtype, config, output_path, forward_loop)
@@ -744,21 +724,16 @@ def _load_quantized_component(
 
     saved_sd = load_file(str(quantized_file))
 
-    if is_passthrough_dtype(dtype):
-        target_torch_dtype = _TORCH_DTYPES[dtype]
-        model = model.to(target_torch_dtype)
-        model.load_state_dict(saved_sd, strict=False)
-    else:
-        quant_cfg = _MODELOPT_CONFIGS[dtype]
-        saved_plugins = _disable_kv_cache_plugins()
-        try:
-            mtq.quantize(model, quant_cfg, forward_loop=None)
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", message="Real quantization has been applied")
-                mtq.compress(model)
-        finally:
-            _restore_kv_cache_plugins(saved_plugins)
-        model.load_state_dict(saved_sd, strict=False)
+    quant_cfg = _MODELOPT_CONFIGS[dtype]
+    saved_plugins = _disable_kv_cache_plugins()
+    try:
+        mtq.quantize(model, quant_cfg, forward_loop=None)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="Real quantization has been applied")
+            mtq.compress(model)
+    finally:
+        _restore_kv_cache_plugins(saved_plugins)
+    model.load_state_dict(saved_sd, strict=False)
 
     log.info("Loaded quantized %s (%s) from %s", class_name, dtype, quantized_file.name)
     return model

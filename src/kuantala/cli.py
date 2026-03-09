@@ -8,7 +8,7 @@ from pathlib import Path
 import click
 from rich.table import Table
 
-from kuantala.config import ALL_DTYPES, CALIB_ALGORITHMS, COMPONENT_DTYPES, DEFAULT_KEEPS, DEFAULT_KEEPS_NAMES, PROMPT_SOURCES, QUANT_DTYPES
+from kuantala.config import DTYPES, CALIB_ALGORITHMS, COMPONENT_DTYPES, DEFAULT_KEEPS, DEFAULT_KEEPS_NAMES, PROMPT_SOURCES
 from kuantala.utils import console, setup_logging
 
 # Component types that can be quantized
@@ -24,7 +24,7 @@ def cli(verbose: bool) -> None:
 
 @cli.command()
 @click.argument("model", metavar="MODEL_ID_OR_PATH")
-@click.option("--dtype", "-d", required=True, type=click.Choice(ALL_DTYPES, case_sensitive=False),
+@click.option("--dtype", "-d", required=True, type=click.Choice(DTYPES, case_sensitive=False),
               help="Target quantization type.")
 @click.option("--output", "-o", type=click.Path(path_type=Path), default=None,
               help="Output directory (default: output-<MODEL_ID>).")
@@ -151,7 +151,7 @@ def _parse_resolution(resolution: str) -> tuple[int, int]:
 @cli.command()
 @click.argument("model", metavar="MODEL_ID_OR_PATH")
 @click.option("--dtypes", "-d", required=True, multiple=True,
-              type=click.Choice(QUANT_DTYPES, case_sensitive=False),
+              type=click.Choice(DTYPES, case_sensitive=False),
               help="Quantization formats to consider (repeatable).")
 @click.option("--effective-bits", type=float, default=4.8,
               help="Target average bits per parameter (default: 4.8).")
@@ -413,11 +413,9 @@ def info() -> None:
     descriptions = {
         "FP8": "8-bit floating point (E4M3). Requires Hopper+ GPU.",
         "NVFP4": "NVIDIA 4-bit floating point. Requires Blackwell+ GPU.",
-        "FP16": "16-bit floating point.",
-        "BF16": "Brain floating point 16.",
     }
 
-    for dtype in ALL_DTYPES:
+    for dtype in DTYPES:
         table.add_row(dtype, descriptions.get(dtype, ""))
 
     console.print(table)
@@ -432,14 +430,28 @@ def info() -> None:
 
     console.print(keeps_table)
 
+    from kuantala.config import _MODEL_ID_TO_KEEPS, _MODEL_ID_TO_PROMPT_SOURCE
+
+    models_table = Table(title="Known Models", title_style="bold")
+    models_table.add_column("Model ID", style="cyan")
+    models_table.add_column("Keep Preset")
+    models_table.add_column("Prompt Source")
+
+    all_ids = sorted(set(_MODEL_ID_TO_KEEPS) | set(_MODEL_ID_TO_PROMPT_SOURCE))
+    for model_id in all_ids:
+        models_table.add_row(
+            model_id,
+            _MODEL_ID_TO_KEEPS.get(model_id, ""),
+            _MODEL_ID_TO_PROMPT_SOURCE.get(model_id, ""),
+        )
+
+    console.print(models_table)
+
 
 # Approximate bits per parameter for size estimation
 _BITS_PER_PARAM = {
     "FP8": 8.5,
     "NVFP4": 4.5,
-    "FP16": 16.0,
-    "BF16": 16.0,
-    "F32": 32.0,
 }
 
 
@@ -488,8 +500,8 @@ def estimate(model: str) -> None:
     table.add_column("Size", justify="right")
     table.add_column("vs FP16", justify="right")
 
-    fp16_bytes = total_params * _BITS_PER_PARAM["FP16"] / 8
-    for dtype in ALL_DTYPES:
+    fp16_bytes = total_params * 16.0 / 8
+    for dtype in DTYPES:
         bpp = _BITS_PER_PARAM.get(dtype, 16.0)
         size_bytes = total_params * bpp / 8
         pct = size_bytes / fp16_bytes * 100

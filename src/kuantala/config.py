@@ -6,24 +6,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
-QUANT_DTYPES = ["FP8", "NVFP4"]
-
-PASSTHROUGH_DTYPES = ["FP16", "BF16"]
-
-ALL_DTYPES = QUANT_DTYPES + PASSTHROUGH_DTYPES
+DTYPES = ["FP8", "NVFP4"]
 
 # Types allowed as per-component overrides (including skip)
-COMPONENT_DTYPES = ALL_DTYPES + ["skip"]
+COMPONENT_DTYPES = DTYPES + ["skip"]
 
 # Calibration algorithms supported by modelopt
 CALIB_ALGORITHMS = ["max", "smoothquant", "awq_lite", "awq_full", "mse"]
 
 # Prompt sources — determines which HF dataset to use for calibration and eval
 PROMPT_SOURCES = ["t2i", "t2v", "i2v", "ti2i"]
-
-
-def is_passthrough_dtype(dtype: str) -> bool:
-    return dtype in PASSTHROUGH_DTYPES
 
 
 # Default keep patterns per model family.
@@ -181,10 +173,10 @@ class QuantConfig:
 
     def __post_init__(self) -> None:
         self.output_dir = Path(self.output_dir)
-        if self.dtype not in ALL_DTYPES:
+        if self.dtype not in DTYPES:
             raise ValueError(
                 f"Unknown dtype {self.dtype!r}. "
-                f"Choose from: {', '.join(ALL_DTYPES)}"
+                f"Choose from: {', '.join(DTYPES)}"
             )
         if self.algorithm not in CALIB_ALGORITHMS:
             raise ValueError(
