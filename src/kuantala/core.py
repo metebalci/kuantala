@@ -67,23 +67,19 @@ _PROMPT_DATASETS: dict[str, dict[str, Any]] = {
     },
 }
 
-# First 10240 entries = calibration pool, second 10240 = eval pool
-_POOL_SIZE = 10240
 
 
 def _load_prompts(
-    num_prompts: int, source: str, for_eval: bool = False
+    num_prompts: int, source: str, for_eval: bool = False, offset: int = 1024,
 ) -> tuple[list[str], list[Any] | None]:
     """Load prompts (and optionally images) from an HF dataset.
 
     Returns (prompts, images) where images is None for t2i/t2v.
-    Uses first 10240 entries for calibration, second 10240 for eval.
+    Calibration uses entries [0:num_prompts], eval uses [offset:offset+num_prompts].
     """
     ds_cfg = _PROMPT_DATASETS[source]
     dataset_name = ds_cfg["name"]
-    # For streaming datasets, use a small offset to avoid slow iteration
-    pool_size = num_prompts if ds_cfg.get("streaming") else _POOL_SIZE
-    offset = pool_size if for_eval else 0
+    offset = offset if for_eval else 0
     end = offset + num_prompts
     purpose = "eval" if for_eval else "calibration"
 
@@ -191,15 +187,18 @@ def _load_model(component: ModelComponent) -> torch.nn.Module:
     return model
 
 
-def _load_pipeline(model_dir: Path, cpu_offload: bool = False) -> Any:
+def _load_pipeline(model_dir: Path, offload: str | None = None) -> Any:
     """Load the full diffusers pipeline for calibration."""
     from diffusers import DiffusionPipeline
 
     log.info("Loading pipeline from %s...", model_dir)
     pipe = DiffusionPipeline.from_pretrained(str(model_dir), torch_dtype=torch.bfloat16)
-    if cpu_offload:
+    if offload == "layers":
+        pipe.enable_sequential_cpu_offload()
+        log.info("Pipeline loaded with layer-level CPU offload")
+    elif offload == "model":
         pipe.enable_model_cpu_offload()
-        log.info("Pipeline loaded with CPU offload")
+        log.info("Pipeline loaded with model-level CPU offload")
     else:
         pipe.to("cuda")
         log.info("Pipeline loaded on CUDA")
@@ -497,7 +496,7 @@ def quantize(config: QuantConfig) -> list[Path]:
 
     # Quantize transformer/unet with pipeline-based calibration
     if pipeline_components:
-        pipe = _load_pipeline(model_dir, cpu_offload=config.cpu_offload)
+        pipe = _load_pipeline(model_dir, offload=config.offload)
 
         if config.calib_prompts:
             prompts = config.calib_prompts[:config.calib_size]
@@ -552,7 +551,7 @@ def analyze(
     num_steps: int,
     resolution: tuple[int, int],
     num_frames: int | None = None,
-    cpu_offload: bool = False,
+    offload: str | None = None,
 ) -> dict:
     """Run auto_quantize to find optimal per-layer format selection.
 
@@ -561,7 +560,7 @@ def analyze(
     bits constraint. Returns the auto_quantize state_dict.
     """
     model_dir = resolve_model_path(model_source)
-    pipe = _load_pipeline(model_dir, cpu_offload=cpu_offload)
+    pipe = _load_pipeline(model_dir, offload=offload)
 
     # Find transformer/unet
     transformer = None
@@ -606,7 +605,7 @@ def analyze(
 
     # Remove accelerate CPU offload hooks before auto_quantize — modelopt's
     # calibration loop calls the model directly and doesn't trigger the hooks.
-    if cpu_offload:
+    if offload:
         from accelerate.hooks import remove_hook_from_submodules
         remove_hook_from_submodules(transformer)
         transformer.to("cuda")
@@ -769,7 +768,8 @@ def evaluate(
     custom_prompts: list[str] | None = None,
     prompt_source: str | None = None,
     num_frames: int | None = None,
-    cpu_offload: bool = False,
+    offset: int = 1024,
+    offload: str | None = None,
 ) -> dict[str, Any]:
     """Compare original vs quantized pipeline outputs.
 
@@ -785,7 +785,7 @@ def evaluate(
         dataset_images = None
     else:
         source = prompt_source or detect_prompt_source(model_source) or "t2i"
-        prompts, dataset_images = _load_prompts(num_prompts, source, for_eval=True)
+        prompts, dataset_images = _load_prompts(num_prompts, source, for_eval=True, offset=offset)
     if len(prompts) < num_prompts:
         log.warning("Only %d prompts available (requested %d)", len(prompts), num_prompts)
     prompts = prompts[:num_prompts]
@@ -797,7 +797,7 @@ def evaluate(
 
     # Load original pipeline
     log.info("Loading original pipeline for reference outputs...")
-    pipe = _load_pipeline(model_dir, cpu_offload=cpu_offload)
+    pipe = _load_pipeline(model_dir, offload=offload)
     pipe_kwargs = _build_pipeline_kwargs(
         pipe, num_steps, resolution, has_dataset_images=dataset_images is not None,
         num_frames=num_frames,
