@@ -267,7 +267,7 @@ For known HuggingFace model IDs, kuantala automatically applies preset keep patt
 | `wan` | Wan2.2-I2V-A14B, Wan2.2-T2V-A14B | patch_embedding, condition_embedder, proj_out, first/last 3 blocks |
 | `flux` | FLUX.2-dev, FLUX.1-Krea-dev | proj_out, time_text_embed, context_embedder, x_embedder, norm_out |
 | `ltx` | LTX-2 | proj_in, time_embed, caption_projection, proj_out, patchify_proj, adaln_single |
-| `cogvideox` | CogVideoX-2b, CogVideoX-2b-I2V | patch_embed, time_embedding, norm_final, norm_out, proj_out |
+| `cogvideox` | CogVideoX-2b, CogVideoX-5b-I2V | patch_embed, time_embedding, norm_final, norm_out, proj_out |
 | `lumina-image` | Lumina-Image-2.0 | x_embedder, time_caption_embed, norm_out |
 | `omnigen` | OmniGen-v1 | patch_embedding, time_token, t_embedder, embed_tokens, norm_out, proj_out, first/last 3 layers |
 | `z-image` | Z-Image | t_embedder, cap_embedder, all_x_embedder, all_final_layer, first/last 3 layers |
@@ -301,10 +301,10 @@ kuantala quantize Qwen/Qwen-Image-Edit-2511 --dtype NVFP4
 kuantala quantize Alpha-VLLM/Lumina-Image-2.0 --dtype FP8
 
 # CogVideoX-2b
-kuantala quantize THUDM/CogVideoX-2b --dtype FP8
+kuantala quantize zai-org/CogVideoX-2b --dtype FP8
 
-# CogVideoX-2b-I2V
-kuantala quantize THUDM/CogVideoX-2b-I2V --dtype FP8
+# CogVideoX-5b-I2V
+kuantala quantize zai-org/CogVideoX-5b-I2V --dtype FP8
 
 # OmniGen-v1
 kuantala quantize Shitao/OmniGen-v1-diffusers --dtype FP8

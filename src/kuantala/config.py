@@ -104,8 +104,8 @@ _MODEL_ID_TO_KEEPS: dict[str, str] = {
     "Qwen/Qwen-Image-2512": "qwen-image",
     "Qwen/Qwen-Image-Edit-2511": "qwen-image",
     "Alpha-VLLM/Lumina-Image-2.0": "lumina-image",
-    "THUDM/CogVideoX-2b": "cogvideox",
-    "THUDM/CogVideoX-2b-I2V": "cogvideox",
+    "zai-org/CogVideoX-2b": "cogvideox",
+    "zai-org/CogVideoX-5b-I2V": "cogvideox",
     "Shitao/OmniGen-v1-diffusers": "omnigen",
 }
 
@@ -126,8 +126,8 @@ _MODEL_ID_TO_PROMPT_SOURCE: dict[str, str] = {
     "Qwen/Qwen-Image-2512": "t2i",
     "Qwen/Qwen-Image-Edit-2511": "ti2i",
     "Alpha-VLLM/Lumina-Image-2.0": "t2i",
-    "THUDM/CogVideoX-2b": "t2v",
-    "THUDM/CogVideoX-2b-I2V": "i2v",
+    "zai-org/CogVideoX-2b": "t2v",
+    "zai-org/CogVideoX-5b-I2V": "i2v",
     "Shitao/OmniGen-v1-diffusers": "ti2i",
 }
 
