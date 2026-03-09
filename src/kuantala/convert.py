@@ -83,6 +83,29 @@ _KEY_MAPS: dict[str, list[tuple[re.Pattern, str]]] = {
 }
 
 
+def _resolve_key_map(remap_keys: str) -> list[tuple[re.Pattern, str]]:
+    """Resolve a key map from a preset name or file path.
+
+    File format: one 'pattern replacement' per line, using regex syntax.
+    Lines starting with # are comments.
+    """
+    path = Path(remap_keys)
+    if path.is_file():
+        key_map = []
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split(maxsplit=1)
+            if len(parts) != 2:
+                raise ValueError(f"Invalid key map line (expected 'pattern replacement'): {line}")
+            key_map.append((re.compile(parts[0]), parts[1]))
+        return key_map
+    if remap_keys in _KEY_MAPS:
+        return _KEY_MAPS[remap_keys]
+    raise ValueError(f"Unknown remap preset '{remap_keys}' and not a valid file path")
+
+
 def _remap_key(key: str, key_map: list[tuple[re.Pattern, str]] | None) -> str:
     """Remap a single key from diffusers naming to original naming."""
     if key_map is not None:
@@ -108,7 +131,7 @@ def convert_to_comfyui(input_path: Path, output_path: Path, remap_keys: str | No
     """
     state_dict = load_file(str(input_path))
 
-    key_map = _KEY_MAPS.get(remap_keys) if remap_keys else None
+    key_map = _resolve_key_map(remap_keys) if remap_keys else None
 
     # Find all quantized layer prefixes by looking for weight_quantizer._scale
     quantized_prefixes: set[str] = set()

@@ -639,8 +639,8 @@ def _print_module_tree(module: object, prefix: str) -> None:
 @click.argument("input_file", metavar="INPUT", type=click.Path(exists=True, path_type=Path))
 @click.option("--output", "-o", type=click.Path(path_type=Path), default=None,
               help="Output file path (default: input stem + '-comfyui.safetensors').")
-@click.option("--remap-keys", type=click.Choice(["wan"], case_sensitive=False), default=None,
-              help="Remap diffusers key names to original names (e.g. 'wan' for Wan 2.1/2.2).")
+@click.option("--remap-keys", type=str, default=None,
+              help="Remap key names: preset name ('wan') or path to a file with 'pattern replacement' lines.")
 def convert(input_file: Path, output: Path | None, remap_keys: str | None) -> None:
     """Convert a kuantala NVFP4 safetensors file to ComfyUI format."""
     if input_file.suffix != ".safetensors":
