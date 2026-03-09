@@ -45,6 +45,9 @@ kuantala estimate Wan-AI/Wan2.2-I2V-A14B-Diffusers
 # Convert NVFP4 output to ComfyUI format
 kuantala convert ./output-wan/transformer-NVFP4.safetensors --remap-keys wan
 
+# Evaluate quantization quality (compare original vs quantized)
+kuantala eval Wan-AI/Wan2.2-I2V-A14B-Diffusers -q ./output-Wan-AI-Wan2.2-I2V-A14B-Diffusers
+
 # Inspect tensors in a quantized file
 kuantala tensors ./output/transformer-FP8.safetensors
 ```
@@ -54,7 +57,7 @@ kuantala tensors ./output/transformer-FP8.safetensors
 Kuantala uses NVIDIA Model Optimizer to quantize model components:
 
 1. **Load** the full diffusers pipeline (transformer, text encoder, VAE, etc.) on CUDA
-2. **Quantize** with Model Optimizer — inserts quantizer nodes and runs calibration by executing the pipeline with text prompts, producing realistic activations for optimal scale factor estimation
+2. **Quantize** with Model Optimizer — inserts quantizer nodes and runs calibration by executing the pipeline with prompts from HuggingFace datasets (see [Prompt Sources](#prompt-sources)), producing realistic activations for optimal scale factor estimation
 3. **Compress** — converts fake-quantized weights to real low-precision (FP8 or packed FP4)
 4. **Save** as safetensors with actual quantized weights
 
@@ -116,6 +119,32 @@ kuantala quantize [OPTIONS] MODEL
 | `--nprompts N` | Number of calibration prompts (default: 256) |
 | `--nsteps N` | Inference steps per calibration prompt (default: 30) |
 | `--resolution` | Calibration resolution: `480p`, `540p`, `720p`, `1080p`, `4k`, or `HEIGHTxWIDTH` (default: `480p`) |
+| `--psrc` | Prompt source: `t2i`, `t2v`, `i2v`, `ti2i` (auto-detected for known HF model IDs) |
+
+### `kuantala analyze`
+
+```
+kuantala analyze [OPTIONS] MODEL
+```
+
+Uses modelopt's `auto_quantize` to find the optimal quantization format per layer given an effective bits constraint. No output files are saved — this is for exploring what format each layer should use.
+
+| Option | Description |
+|--------|-------------|
+| `MODEL` | HuggingFace diffusers model ID or local directory path (required) |
+| `-d, --dtypes` | Quantization formats to consider: `FP8`, `NVFP4` (repeatable, required) |
+| `--effective-bits` | Target average bits per parameter (default: `4.8`) |
+| `--nprompts N` | Number of pipeline runs to capture inputs (default: 8) |
+| `--nsteps N` | Inference steps per pipeline run (default: 10) |
+| `--resolution` | Calibration resolution: `480p`, `540p`, `720p`, `1080p`, `4k`, or `HEIGHTxWIDTH` (default: `480p`) |
+
+```bash
+# Analyze optimal format mix between FP8 and NVFP4
+kuantala analyze Wan-AI/Wan2.2-I2V-A14B-Diffusers -d FP8 -d NVFP4
+
+# Target higher quality (more bits)
+kuantala analyze Wan-AI/Wan2.2-I2V-A14B-Diffusers -d FP8 -d NVFP4 --effective-bits 6.0
+```
 
 ### `kuantala components`
 
@@ -154,6 +183,37 @@ kuantala convert [OPTIONS] INPUT
 | `INPUT` | Path to a Model Optimizer NVFP4 `.safetensors` file (required) |
 | `-o, --output` | Output file path (default: `{input_stem}-comfyui.safetensors`) |
 | `--remap-keys` | Remap diffusers key names to original: `wan` |
+
+### `kuantala eval`
+
+```
+kuantala eval [OPTIONS] MODEL
+kuantala evaluate [OPTIONS] MODEL
+```
+
+Compares original vs quantized pipeline outputs using PSNR and SSIM metrics. Runs the pipeline with fixed seeds on both original and quantized models to measure quality loss. Eval prompts come from HuggingFace datasets selected by `--psrc` (see [Prompt Sources](#prompt-sources)).
+
+| Option | Description |
+|--------|-------------|
+| `MODEL` | HuggingFace diffusers model ID or local directory path (required) |
+| `-q, --quantized-dir` | Directory with quantized safetensors from `kuantala quantize` (required) |
+| `--prompts FILE` | File with eval prompts, one per line (default: HF dataset test split) |
+| `--nprompts N` | Number of eval prompts (default: 16) |
+| `--nsteps N` | Inference steps (default: 30) |
+| `--resolution` | Resolution: `480p`, `540p`, `720p`, `1080p`, `4k`, or `HEIGHTxWIDTH` (default: `480p`) |
+| `--decode` | Also compare decoded pixel-space outputs (default: latent only) |
+| `--psrc` | Prompt source: `t2i`, `t2v`, `i2v`, `ti2i` (auto-detected for known HF model IDs) |
+
+```bash
+# Basic eval
+kuantala eval Wan-AI/Wan2.2-I2V-A14B-Diffusers -q ./output-wan
+
+# With pixel-space comparison
+kuantala eval Wan-AI/Wan2.2-I2V-A14B-Diffusers -q ./output-wan --decode
+
+# Custom prompts
+kuantala eval ./local-model -q ./output --prompts eval_prompts.txt --nprompts 8
+```
 
 ### `kuantala tensors`
 
@@ -210,6 +270,9 @@ For known HuggingFace model IDs, kuantala automatically applies preset keep patt
 | `wan` | Wan2.2-I2V-A14B, Wan2.2-T2V-A14B | patch_embedding, condition_embedder, proj_out, first/last 3 blocks |
 | `flux` | FLUX.2-dev, FLUX.1-Krea-dev | proj_out, time_text_embed, context_embedder, x_embedder, norm_out |
 | `ltx` | LTX-2 | proj_in, time_embed, caption_projection, proj_out, patchify_proj, adaln_single |
+| `cogvideox` | CogVideoX-2b, CogVideoX-5b, CogVideoX-2b-I2V, CogVideoX-5b-I2V | patch_embed, time_embedding, norm_final, norm_out, proj_out |
+| `lumina-image` | Lumina-Image-2.0 | x_embedder, time_caption_embed, norm_out |
+| `omnigen` | OmniGen-v1 | patch_embedding, time_token, t_embedder, embed_tokens, norm_out, proj_out, first/last 3 layers |
 | `z-image` | Z-Image | t_embedder, cap_embedder, all_x_embedder, all_final_layer, first/last 3 layers |
 | `qwen-image` | Qwen-Image-2512, Qwen-Image-Edit-2511 | time_text_embed, img_in, txt_in, txt_norm, norm_out, proj_out, first/last 3 transformer_blocks |
 
@@ -236,9 +299,36 @@ kuantala quantize Qwen/Qwen-Image-2512 --dtype NVFP4
 
 # Qwen-Image-Edit-2511
 kuantala quantize Qwen/Qwen-Image-Edit-2511 --dtype NVFP4
+
+# Lumina-Image-2.0
+kuantala quantize Alpha-VLLM/Lumina-Image-2.0 --dtype FP8
+
+# CogVideoX-2b
+kuantala quantize THUDM/CogVideoX-2b --dtype FP8
+
+# CogVideoX-2b-I2V
+kuantala quantize THUDM/CogVideoX-2b-I2V --dtype FP8
+
+# OmniGen-v1
+kuantala quantize Shitao/OmniGen-v1-diffusers --dtype FP8
 ```
 
 Norms (`FP32LayerNorm`, `RMSNorm`) and embeddings (`WanRotaryPosEmbed`) are already kept at original precision by Model Optimizer.
+
+## Prompt Sources
+
+Calibration and evaluation prompts are loaded from HuggingFace datasets. Use `--psrc` to select the source, or let kuantala auto-detect it from known model IDs.
+
+| Source | Dataset | License | Use case |
+|--------|---------|---------|----------|
+| `t2i` | [poloclub/diffusiondb](https://huggingface.co/datasets/poloclub/diffusiondb) | CC0-1.0 | Text-to-image models (FLUX, Z-Image, Qwen-Image) |
+| `t2v` | [WenhaoWang/VidProM](https://huggingface.co/datasets/WenhaoWang/VidProM) | CC-BY-NC-4.0 | Text-to-video models (Wan T2V, LTX) |
+| `i2v` | [WenhaoWang/TIP-I2V](https://huggingface.co/datasets/WenhaoWang/TIP-I2V) | CC-BY-NC-4.0 | Image-to-video models (Wan I2V) |
+| `ti2i` | [UCSC-VLAA/HQ-Edit](https://huggingface.co/datasets/UCSC-VLAA/HQ-Edit) | CC-BY-NC-4.0 | Text+image-to-image models (Qwen-Image-Edit) |
+
+The first 10240 entries from each dataset are used for calibration, the second 10240 for evaluation. For I2V and TI2I sources, the dataset provides both text prompts and conditioning images.
+
+Datasets are downloaded on demand from HuggingFace and cached locally by the `datasets` library. Custom prompts can be provided via `--prompts FILE` to override the default dataset.
 
 ## Python API
 

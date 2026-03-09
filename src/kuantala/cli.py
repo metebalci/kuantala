@@ -8,7 +8,7 @@ from pathlib import Path
 import click
 from rich.table import Table
 
-from kuantala.config import ALL_DTYPES, CALIB_ALGORITHMS, COMPONENT_DTYPES, DEFAULT_KEEPS, DEFAULT_KEEPS_NAMES
+from kuantala.config import ALL_DTYPES, CALIB_ALGORITHMS, COMPONENT_DTYPES, DEFAULT_KEEPS, DEFAULT_KEEPS_NAMES, PROMPT_SOURCES, QUANT_DTYPES
 from kuantala.utils import console, setup_logging
 
 # Component types that can be quantized
@@ -49,6 +49,8 @@ def cli(verbose: bool) -> None:
               help="Number of inference steps per calibration prompt (default: 30).")
 @click.option("--resolution", type=str, default="480p",
               help="Calibration resolution: 480p, 540p, 720p, 1080p, 4k, or HEIGHTxWIDTH (default: 480p).")
+@click.option("--psrc", type=click.Choice(PROMPT_SOURCES, case_sensitive=False), default=None,
+              help="Prompt source: t2i, t2v, i2v (auto-detected for known HF model IDs).")
 def quantize(
     model: str,
     dtype: str,
@@ -64,6 +66,7 @@ def quantize(
     nprompts: int,
     nsteps: int,
     resolution: str,
+    psrc: str | None,
 ) -> None:
     """Quantize a generative model.
 
@@ -78,18 +81,7 @@ def quantize(
         safe_name = model.replace("/", "-").strip("-")
         output = Path(f"output-{safe_name}")
 
-    # Parse resolution
-    _RESOLUTION_PRESETS = {"480p": (480, 848), "540p": (540, 960), "720p": (720, 1280), "1080p": (1080, 1920), "4k": (2160, 3840)}
-    if resolution.lower() in _RESOLUTION_PRESETS:
-        calib_resolution = _RESOLUTION_PRESETS[resolution.lower()]
-    else:
-        try:
-            h, w = resolution.lower().split("x")
-            calib_resolution = (int(h), int(w))
-        except (ValueError, AttributeError):
-            raise click.BadParameter(
-                f"Invalid resolution: {resolution!r}. Use 480p, 540p, 720p, 1080p, 4k, or HEIGHTxWIDTH."
-            )
+    calib_resolution = _parse_resolution(resolution)
 
     # Normalize case
     dtype = dtype.upper()
@@ -119,6 +111,7 @@ def quantize(
         calib_steps=nsteps,
         calib_resolution=calib_resolution,
         calib_prompts=prompt_list,
+        prompt_source=psrc,
         keep=list(keep),
     )
 
@@ -130,8 +123,136 @@ def quantize(
         for f in output_files:
             size_mb = f.stat().st_size / (1024 * 1024)
             console.print(f"  {f} ({size_mb:.1f} MB)")
+
+        # Write quantize.md summary
+        md_path = output / "quantize.md"
+        md_path.write_text(_generate_quantize_markdown(config, output_files))
+        console.print(f"\n[dim]Saved quantization summary to {md_path}[/]")
     else:
         console.print("[yellow]No files were produced.[/]")
+
+
+_RESOLUTION_PRESETS = {"480p": (480, 848), "540p": (540, 960), "720p": (720, 1280), "1080p": (1080, 1920), "4k": (2160, 3840)}
+
+
+def _parse_resolution(resolution: str) -> tuple[int, int]:
+    """Parse a resolution string into (height, width) tuple."""
+    if resolution.lower() in _RESOLUTION_PRESETS:
+        return _RESOLUTION_PRESETS[resolution.lower()]
+    try:
+        h, w = resolution.lower().split("x")
+        return (int(h), int(w))
+    except (ValueError, AttributeError):
+        raise click.BadParameter(
+            f"Invalid resolution: {resolution!r}. Use 480p, 540p, 720p, 1080p, 4k, or HEIGHTxWIDTH."
+        )
+
+
+@cli.command()
+@click.argument("model", metavar="MODEL_ID_OR_PATH")
+@click.option("--dtypes", "-d", required=True, multiple=True,
+              type=click.Choice(QUANT_DTYPES, case_sensitive=False),
+              help="Quantization formats to consider (repeatable).")
+@click.option("--effective-bits", type=float, default=4.8,
+              help="Target average bits per parameter (default: 4.8).")
+@click.option("--nprompts", type=int, default=8,
+              help="Number of pipeline runs to capture inputs (default: 8).")
+@click.option("--nsteps", type=int, default=10,
+              help="Inference steps per pipeline run (default: 10).")
+@click.option("--resolution", type=str, default="480p",
+              help="Calibration resolution: 480p, 540p, 720p, 1080p, 4k, or HEIGHTxWIDTH (default: 480p).")
+def analyze(
+    model: str,
+    dtypes: tuple[str, ...],
+    effective_bits: float,
+    nprompts: int,
+    nsteps: int,
+    resolution: str,
+) -> None:
+    """Analyze optimal per-layer quantization format selection.
+
+    Uses modelopt's auto_quantize to find the best quantization format for each
+    layer given an effective bits constraint. No output files are saved.
+
+    MODEL is a HuggingFace diffusers model ID or local directory path.
+    """
+    from kuantala.core import analyze as run_analyze
+
+    calib_resolution = _parse_resolution(resolution)
+    dtype_list = [d.upper() for d in dtypes]
+
+    # Validate effective_bits against selected formats
+    _MIN_BITS = {"NVFP4": 4.5, "FP8": 8.0}
+    min_bits = min(_MIN_BITS.get(d, 16.0) for d in dtype_list)
+    if effective_bits < min_bits or effective_bits > 16.0:
+        raise click.BadParameter(
+            f"effective-bits must be between {min_bits} and 16.0 for formats {', '.join(dtype_list)}."
+        )
+
+    console.print(f"\n[bold]Model:[/] {model}")
+    console.print(f"[bold]Formats:[/] {', '.join(dtype_list)}")
+    console.print(f"[bold]Target effective bits:[/] {effective_bits}")
+    console.print(f"[bold]Pipeline runs:[/] {nprompts} × {nsteps} steps @ {resolution}")
+    console.print()
+
+    state_dict = run_analyze(
+        model_source=model,
+        dtypes=dtype_list,
+        effective_bits=effective_bits,
+        num_prompts=nprompts,
+        num_steps=nsteps,
+        resolution=calib_resolution,
+    )
+
+    # Display results
+    best = state_dict.get("best", {})
+    recipe = best.get("recipe", {})
+    constraints = best.get("constraints", {})
+    is_satisfied = best.get("is_satisfied", False)
+    total_score = best.get("score", 0)
+    candidate_stats = state_dict.get("candidate_stats", {})
+
+    # Per-layer table
+    table = Table(title="Per-Layer Format Selection", title_style="bold")
+    table.add_column("#", justify="right", style="dim")
+    table.add_column("Layer")
+    table.add_column("Selected Format", style="cyan")
+    table.add_column("Score", justify="right")
+
+    format_counts: dict[str, int] = {}
+    for i, (layer_name, selected) in enumerate(sorted(recipe.items())):
+        fmt_str = str(selected)
+        format_counts[fmt_str] = format_counts.get(fmt_str, 0) + 1
+
+        # Get score for this layer's selected format
+        layer_stats = candidate_stats.get(layer_name, {})
+        scores = layer_stats.get("scores", [])
+        formats = layer_stats.get("formats", [])
+        score_str = ""
+        for fmt, score in zip(formats, scores):
+            if str(fmt) == fmt_str:
+                score_str = f"{score:.4f}"
+                break
+
+        table.add_row(str(i + 1), layer_name, fmt_str, score_str)
+
+    console.print(table)
+
+    # Summary
+    summary = Table(title="Summary", title_style="bold")
+    summary.add_column("Metric", style="cyan")
+    summary.add_column("Value")
+
+    actual_bits = constraints.get("effective_bits", "?")
+    summary.add_row("Target effective bits", f"{effective_bits}")
+    summary.add_row("Actual effective bits", f"{actual_bits}")
+    summary.add_row("Constraint satisfied", "[green]Yes[/]" if is_satisfied else "[red]No[/]")
+    summary.add_row("Total sensitivity score", f"{total_score:.4f}")
+
+    for fmt, count in sorted(format_counts.items()):
+        summary.add_row(f"Layers → {fmt}", str(count))
+
+    console.print(summary)
 
 
 @cli.command()
@@ -510,6 +631,328 @@ def convert(input_file: Path, output: Path | None, remap_keys: str | None) -> No
     console.print(f"\n[bold green]Converted {n_layers} layers[/]")
     console.print(f"  Input:  {input_mb:.1f} MB")
     console.print(f"  Output: {output_mb:.1f} MB")
+
+
+@cli.command("eval", hidden=False)
+@click.argument("model", metavar="MODEL_ID_OR_PATH")
+@click.option("-q", "--quantized-dir", required=True, type=click.Path(exists=True, path_type=Path),
+              help="Directory with quantized safetensors from 'kuantala quantize'.")
+@click.option("--prompts", type=click.Path(exists=True, path_type=Path), default=None,
+              help="File with eval prompts, one per line (default: HF dataset test split).")
+@click.option("--nprompts", type=int, default=16,
+              help="Number of eval prompts (default: 16).")
+@click.option("--nsteps", type=int, default=30,
+              help="Number of inference steps (default: 30).")
+@click.option("--resolution", type=str, default="480p",
+              help="Resolution: 480p, 540p, 720p, 1080p, 4k, or HEIGHTxWIDTH (default: 480p).")
+@click.option("--decode", is_flag=True,
+              help="Also compare decoded pixel-space outputs (default: latent only).")
+@click.option("--psrc", type=click.Choice(PROMPT_SOURCES, case_sensitive=False), default=None,
+              help="Prompt source: t2i, t2v, i2v (auto-detected for known HF model IDs).")
+def eval_cmd(
+    model: str,
+    quantized_dir: Path,
+    prompts: Path | None,
+    nprompts: int,
+    nsteps: int,
+    resolution: str,
+    decode: bool,
+    psrc: str | None,
+) -> None:
+    """Evaluate quantization quality by comparing original vs quantized outputs.
+
+    Runs the pipeline with fixed seeds on both original and quantized models,
+    then computes PSNR and SSIM metrics.
+
+    MODEL is a HuggingFace diffusers model ID or local directory path.
+    """
+    from kuantala.core import evaluate
+
+    eval_resolution = _parse_resolution(resolution)
+
+    prompt_list = None
+    if prompts is not None:
+        prompt_list = [line.strip() for line in prompts.read_text().splitlines() if line.strip()]
+
+    console.print(f"\n[bold]Model:[/] {model}")
+    console.print(f"[bold]Quantized dir:[/] {quantized_dir}")
+    console.print(f"[bold]Prompts:[/] {nprompts} ({'custom' if prompts else 'HF dataset test split'})")
+    console.print(f"[bold]Steps:[/] {nsteps}")
+    console.print(f"[bold]Resolution:[/] {resolution}")
+    console.print(f"[bold]Decode:[/] {'yes' if decode else 'no (latent only)'}")
+    console.print()
+
+    results = evaluate(
+        model_source=model,
+        quantized_dir=quantized_dir,
+        num_prompts=nprompts,
+        num_steps=nsteps,
+        resolution=eval_resolution,
+        decode=decode,
+        custom_prompts=prompt_list,
+        prompt_source=psrc,
+    )
+
+    _display_eval_results(results, decode)
+
+    # Write eval.md
+    md_path = quantized_dir / "eval.md"
+    md_path.write_text(_generate_eval_markdown(results, decode))
+    console.print(f"\n[bold green]Saved eval results to {md_path}[/]")
+
+
+# Register 'evaluate' as an alias for 'eval'
+cli.add_command(eval_cmd, name="evaluate")
+
+
+def _display_eval_results(results: dict, decode: bool) -> None:
+    """Display eval results as Rich tables."""
+    for label, comp_data in results.get("components", {}).items():
+        comp_metrics = comp_data["metrics"]
+
+        # Per-prompt table
+        table = Table(title=f"Eval: {label}", title_style="bold")
+        table.add_column("#", justify="right", style="dim")
+        table.add_column("Prompt", max_width=40, no_wrap=True)
+        table.add_column("Seed", justify="right")
+        table.add_column("Latent PSNR", justify="right", style="cyan")
+        table.add_column("Latent SSIM", justify="right", style="cyan")
+        if decode:
+            table.add_column("Pixel PSNR", justify="right", style="green")
+            table.add_column("Pixel SSIM", justify="right", style="green")
+
+        latent_psnrs: list[float] = []
+        latent_ssims: list[float] = []
+        pixel_psnrs: list[float] = []
+        pixel_ssims: list[float] = []
+
+        for i, pm in enumerate(comp_metrics):
+            prompt_text = pm["prompt"]
+            if len(prompt_text) > 37:
+                prompt_text = prompt_text[:37] + "..."
+
+            # Aggregate latent frame metrics
+            latent_frames = pm.get("latent_frames", [])
+            if latent_frames:
+                avg_psnr = sum(f["psnr"] for f in latent_frames) / len(latent_frames)
+                avg_ssim = sum(f["ssim"] for f in latent_frames) / len(latent_frames)
+                latent_psnrs.append(avg_psnr)
+                latent_ssims.append(avg_ssim)
+                psnr_str = f"{avg_psnr:.2f} dB"
+                ssim_str = f"{avg_ssim:.4f}"
+            else:
+                psnr_str = "-"
+                ssim_str = "-"
+
+            row = [str(i + 1), prompt_text, str(pm["seed"]), psnr_str, ssim_str]
+
+            if decode:
+                decoded_frames = pm.get("decoded_frames", [])
+                if decoded_frames:
+                    avg_p = sum(f["psnr"] for f in decoded_frames) / len(decoded_frames)
+                    avg_s = sum(f["ssim"] for f in decoded_frames) / len(decoded_frames)
+                    pixel_psnrs.append(avg_p)
+                    pixel_ssims.append(avg_s)
+                    row.extend([f"{avg_p:.2f} dB", f"{avg_s:.4f}"])
+                else:
+                    row.extend(["-", "-"])
+
+            table.add_row(*row)
+
+            # Show per-frame breakdown for video (multiple frames)
+            if latent_frames and len(latent_frames) > 1:
+                for fi, frame in enumerate(latent_frames):
+                    frame_row = ["", f"  frame {fi}", "", f"{frame['psnr']:.2f}", f"{frame['ssim']:.4f}"]
+                    if decode:
+                        decoded_frames = pm.get("decoded_frames", [])
+                        if fi < len(decoded_frames):
+                            frame_row.extend([f"{decoded_frames[fi]['psnr']:.2f}", f"{decoded_frames[fi]['ssim']:.4f}"])
+                        else:
+                            frame_row.extend(["", ""])
+                    table.add_row(*frame_row)
+
+        console.print(table)
+
+        # Summary table
+        summary = Table(title=f"Summary: {label}", title_style="bold")
+        summary.add_column("Metric", style="cyan")
+        summary.add_column("Value")
+
+        summary.add_row("Component", comp_data["component"])
+        summary.add_row("Dtype", comp_data["dtype"])
+        summary.add_row("Prompts", str(len(comp_metrics)))
+
+        if latent_psnrs:
+            summary.add_row("Latent PSNR (avg)", f"{sum(latent_psnrs) / len(latent_psnrs):.2f} dB")
+        if latent_ssims:
+            summary.add_row("Latent SSIM (avg)", f"{sum(latent_ssims) / len(latent_ssims):.4f}")
+        if decode and pixel_psnrs:
+            summary.add_row("Pixel PSNR (avg)", f"{sum(pixel_psnrs) / len(pixel_psnrs):.2f} dB")
+        if decode and pixel_ssims:
+            summary.add_row("Pixel SSIM (avg)", f"{sum(pixel_ssims) / len(pixel_ssims):.4f}")
+
+        console.print(summary)
+
+
+def _resolve_prompt_source(config: object) -> str | None:
+    """Resolve the prompt source for a QuantConfig, or None for custom prompts."""
+    from kuantala.config import QuantConfig, detect_prompt_source
+    assert isinstance(config, QuantConfig)
+    if config.calib_prompts is not None:
+        return None
+    return config.prompt_source or detect_prompt_source(config.model_source) or "t2i"
+
+
+def _prompt_source_markdown(source: str | None) -> str:
+    """Return a markdown-formatted prompt source string."""
+    from kuantala.core import _PROMPT_DATASETS
+    if source is None:
+        return "custom file"
+    ds = _PROMPT_DATASETS.get(source)
+    if ds is None:
+        return source
+    name = ds["name"]
+    return f"[{name}](https://huggingface.co/datasets/{name})"
+
+
+def _generate_quantize_markdown(config: object, output_files: list[Path]) -> str:
+    """Generate a markdown summary of the quantization run."""
+    from kuantala.config import QuantConfig
+    assert isinstance(config, QuantConfig)
+
+    h, w = config.calib_resolution
+    lines = [
+        "## Quantization Details",
+        "",
+        f"Quantized with [kuantala](https://github.com/kuantala/kuantala) using [NVIDIA Model Optimizer](https://github.com/NVIDIA/TensorRT-Model-Optimizer).",
+        "",
+        "### Configuration",
+        "",
+        "| | |",
+        "|---|---|",
+        f"| Original model | `{config.model_source}` |",
+        f"| Quantization dtype | {config.dtype} |",
+        f"| Algorithm | {config.algorithm} |",
+        f"| Calibration prompts | {config.calib_size} from {_prompt_source_markdown(_resolve_prompt_source(config))} |",
+        f"| Calibration steps | {config.calib_steps} |",
+        f"| Calibration resolution | {h}x{w} |",
+    ]
+
+    if config.vae_dtype != "skip":
+        lines.append(f"| VAE dtype | {config.vae_dtype} |")
+    if config.te_dtype != "skip":
+        lines.append(f"| Text encoder dtype | {config.te_dtype} |")
+    if config.ie_dtype != "skip":
+        lines.append(f"| Image encoder dtype | {config.ie_dtype} |")
+    if config.default_keeps:
+        lines.append(f"| Default keeps | {config.default_keeps} |")
+    if config.keep:
+        lines.append(f"| Custom keeps | {', '.join(f'`{k}`' for k in config.keep)} |")
+
+    lines.append("")
+    lines.append("### Output Files")
+    lines.append("")
+    lines.append("| File | Size |")
+    lines.append("|------|-----:|")
+    for f in output_files:
+        size_mb = f.stat().st_size / (1024 * 1024)
+        if size_mb >= 1024:
+            size_str = f"{size_mb / 1024:.1f} GB"
+        else:
+            size_str = f"{size_mb:.1f} MB"
+        lines.append(f"| `{f.name}` | {size_str} |")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _generate_eval_markdown(results: dict, decode: bool) -> str:
+    """Generate a markdown snippet with eval results for model cards."""
+    cfg = results.get("config", {})
+    h, w = cfg.get("resolution", (0, 0))
+    lines = [
+        "## Evaluation Results",
+        "",
+        f"Quantization quality evaluated against the original model using [kuantala](https://github.com/kuantala/kuantala).",
+        "",
+        "### Setup",
+        "",
+        f"| | |",
+        f"|---|---|",
+        f"| Original model | `{cfg.get('model_source', '')}` |",
+        f"| Eval prompts | {cfg.get('num_prompts', '')} from {_prompt_source_markdown(cfg.get('prompt_source'))} |",
+        f"| Inference steps | {cfg.get('num_steps', '')} |",
+        f"| Resolution | {h}x{w} |",
+        f"| Comparison | {'latent + pixel' if decode else 'latent space'} |",
+        "",
+    ]
+
+    for label, comp_data in results.get("components", {}).items():
+        comp_metrics = comp_data["metrics"]
+        lines.append(f"### {label}")
+        lines.append("")
+
+        # Build per-prompt table
+        header = "| # | Prompt | Seed | Latent PSNR | Latent SSIM |"
+        sep = "|--:|--------|-----:|------------:|------------:|"
+        if decode:
+            header += " Pixel PSNR | Pixel SSIM |"
+            sep += "------------:|------------:|"
+        lines.append(header)
+        lines.append(sep)
+
+        latent_psnrs: list[float] = []
+        latent_ssims: list[float] = []
+        pixel_psnrs: list[float] = []
+        pixel_ssims: list[float] = []
+
+        for i, pm in enumerate(comp_metrics):
+            prompt_text = pm["prompt"]
+            if len(prompt_text) > 40:
+                prompt_text = prompt_text[:40] + "..."
+
+            latent_frames = pm.get("latent_frames", [])
+            if latent_frames:
+                avg_psnr = sum(f["psnr"] for f in latent_frames) / len(latent_frames)
+                avg_ssim = sum(f["ssim"] for f in latent_frames) / len(latent_frames)
+                latent_psnrs.append(avg_psnr)
+                latent_ssims.append(avg_ssim)
+                row = f"| {i+1} | {prompt_text} | {pm['seed']} | {avg_psnr:.2f} dB | {avg_ssim:.4f} |"
+            else:
+                row = f"| {i+1} | {prompt_text} | {pm['seed']} | - | - |"
+
+            if decode:
+                decoded_frames = pm.get("decoded_frames", [])
+                if decoded_frames:
+                    avg_p = sum(f["psnr"] for f in decoded_frames) / len(decoded_frames)
+                    avg_s = sum(f["ssim"] for f in decoded_frames) / len(decoded_frames)
+                    pixel_psnrs.append(avg_p)
+                    pixel_ssims.append(avg_s)
+                    row += f" {avg_p:.2f} dB | {avg_s:.4f} |"
+                else:
+                    row += " - | - |"
+
+            lines.append(row)
+
+        # Summary
+        lines.append("")
+        lines.append("**Summary**")
+        lines.append("")
+        lines.append("| Metric | Value |")
+        lines.append("|--------|------:|")
+
+        if latent_psnrs:
+            lines.append(f"| Latent PSNR (avg) | {sum(latent_psnrs) / len(latent_psnrs):.2f} dB |")
+        if latent_ssims:
+            lines.append(f"| Latent SSIM (avg) | {sum(latent_ssims) / len(latent_ssims):.4f} |")
+        if decode and pixel_psnrs:
+            lines.append(f"| Pixel PSNR (avg) | {sum(pixel_psnrs) / len(pixel_psnrs):.2f} dB |")
+        if decode and pixel_ssims:
+            lines.append(f"| Pixel SSIM (avg) | {sum(pixel_ssims) / len(pixel_ssims):.4f} |")
+
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 @cli.command()

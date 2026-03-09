@@ -18,6 +18,9 @@ COMPONENT_DTYPES = ALL_DTYPES + ["skip"]
 # Calibration algorithms supported by modelopt
 CALIB_ALGORITHMS = ["max", "smoothquant", "awq_lite", "awq_full", "mse"]
 
+# Prompt sources — determines which HF dataset to use for calibration and eval
+PROMPT_SOURCES = ["t2i", "t2v", "i2v", "ti2i"]
+
 
 def is_passthrough_dtype(dtype: str) -> bool:
     return dtype in PASSTHROUGH_DTYPES
@@ -51,6 +54,31 @@ DEFAULT_KEEPS: dict[str, list[str]] = {
     ],
 }
 
+DEFAULT_KEEPS["cogvideox"] = [
+    "*patch_embed*",
+    "*time_embedding*",
+    "*norm_final*",
+    "*norm_out*",
+    "*proj_out*",
+]
+
+DEFAULT_KEEPS["lumina-image"] = [
+    "*x_embedder*",
+    "*time_caption_embed*",
+    "*norm_out*",
+]
+
+DEFAULT_KEEPS["omnigen"] = [
+    "*patch_embedding*",
+    "*time_token*",
+    "*t_embedder*",
+    "*embed_tokens*",
+    "*norm_out*",
+    "*proj_out*",
+    "*layers.[0-2].*",
+    "*layers.3[5-7].*",
+]
+
 DEFAULT_KEEPS["z-image"] = [
     "*t_embedder*",
     "*cap_embedder*",
@@ -83,12 +111,42 @@ _MODEL_ID_TO_KEEPS: dict[str, str] = {
     "Tongyi-MAI/Z-Image": "z-image",
     "Qwen/Qwen-Image-2512": "qwen-image",
     "Qwen/Qwen-Image-Edit-2511": "qwen-image",
+    "Alpha-VLLM/Lumina-Image-2.0": "lumina-image",
+    "THUDM/CogVideoX-2b": "cogvideox",
+    "THUDM/CogVideoX-5b": "cogvideox",
+    "THUDM/CogVideoX-2b-I2V": "cogvideox",
+    "THUDM/CogVideoX-5b-I2V": "cogvideox",
+    "Shitao/OmniGen-v1-diffusers": "omnigen",
 }
 
 
 def detect_default_keeps(model_source: str) -> str | None:
     """Auto-detect default keeps preset from HuggingFace model ID."""
     return _MODEL_ID_TO_KEEPS.get(model_source)
+
+
+# Map HuggingFace model IDs to prompt sources
+_MODEL_ID_TO_PROMPT_SOURCE: dict[str, str] = {
+    "Wan-AI/Wan2.2-I2V-A14B-Diffusers": "i2v",
+    "Wan-AI/Wan2.2-T2V-A14B-Diffusers": "t2v",
+    "black-forest-labs/FLUX.2-dev": "t2i",
+    "black-forest-labs/FLUX.1-Krea-dev": "t2i",
+    "Lightricks/LTX-2": "t2v",
+    "Tongyi-MAI/Z-Image": "t2i",
+    "Qwen/Qwen-Image-2512": "t2i",
+    "Qwen/Qwen-Image-Edit-2511": "ti2i",
+    "Alpha-VLLM/Lumina-Image-2.0": "t2i",
+    "THUDM/CogVideoX-2b": "t2v",
+    "THUDM/CogVideoX-5b": "t2v",
+    "THUDM/CogVideoX-2b-I2V": "i2v",
+    "THUDM/CogVideoX-5b-I2V": "i2v",
+    "Shitao/OmniGen-v1-diffusers": "ti2i",
+}
+
+
+def detect_prompt_source(model_source: str) -> str | None:
+    """Auto-detect prompt source from HuggingFace model ID."""
+    return _MODEL_ID_TO_PROMPT_SOURCE.get(model_source)
 
 
 @dataclass
@@ -110,6 +168,9 @@ class QuantConfig:
     calib_steps: int = 30  # number of inference steps per prompt
     calib_resolution: tuple[int, int] = (480, 848)  # (height, width) for calibration
     calib_prompts: list[str] | None = None  # custom prompts (default: HF dataset)
+
+    # Prompt source: t2i, t2v, i2v (auto-detected for known model IDs)
+    prompt_source: str | None = None
 
     # Default keep preset (e.g. "wan", "flux", "ltx"); auto-detected for known model IDs
     default_keeps: str | None = None
