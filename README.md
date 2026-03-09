@@ -108,6 +108,8 @@ kuantala analyze [OPTIONS] MODEL
 
 Uses modelopt's `auto_quantize` to find the optimal quantization format per layer given an effective bits constraint. No output files are saved — this is for exploring what format each layer should use.
 
+> **Note:** `analyze` requires significantly more VRAM than `quantize` or `eval` because it computes gradients for sensitivity scoring. As a rough guide, expect ~3-4x the model size in VRAM.
+
 | Option | Description |
 |--------|-------------|
 | `MODEL` | HuggingFace diffusers model ID or local directory path (required) |

@@ -183,8 +183,11 @@ def _load_model(component: ModelComponent) -> torch.nn.Module:
     # diffusers uses torch_dtype, transformers uses dtype
     dtype_kwarg = "dtype" if component.library == "transformers" else "torch_dtype"
     model = cls.from_pretrained(str(component.path), **{dtype_kwarg: torch.bfloat16})
+    vram_before = torch.cuda.memory_allocated()
     model = model.cuda()
-    log.info("Loaded %s.%s on CUDA", component.library, component.class_name)
+    component_gb = (torch.cuda.memory_allocated() - vram_before) / 1024**3
+    total_gb = torch.cuda.memory_allocated() / 1024**3
+    log.info("Loaded %s.%s on CUDA (%.1f GB, total %.1f GB)", component.library, component.class_name, component_gb, total_gb)
     return model
 
 
@@ -600,6 +603,13 @@ def analyze(
     handle.remove()
     num_captured = len(captured_inputs)
     log.info("Captured %d transformer forward passes", num_captured)
+
+    # Remove accelerate CPU offload hooks before auto_quantize — modelopt's
+    # calibration loop calls the model directly and doesn't trigger the hooks.
+    if cpu_offload:
+        from accelerate.hooks import remove_hook_from_submodules
+        remove_hook_from_submodules(transformer)
+        transformer.to("cuda")
 
     # Build format list for auto_quantize
     quant_formats = [_AUTO_QUANTIZE_CONFIGS[d] for d in dtypes if d in _AUTO_QUANTIZE_CONFIGS]
