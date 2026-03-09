@@ -194,8 +194,8 @@ def _load_pipeline(model_dir: Path) -> Any:
 
     log.info("Loading pipeline from %s...", model_dir)
     pipe = DiffusionPipeline.from_pretrained(str(model_dir), torch_dtype=torch.float16)
-    pipe.to("cuda")
-    log.info("Pipeline loaded on CUDA")
+    pipe.enable_model_cpu_offload()
+    log.info("Pipeline loaded with CPU offload")
     return pipe
 
 
@@ -432,6 +432,7 @@ def _quantize_and_save(
     saved_plugins = _disable_kv_cache_plugins()
     try:
         log.info("Applying %s quantization (algorithm=%s) via modelopt...", dtype, config.algorithm)
+        model.cuda()
         mtq.quantize(model, quant_cfg, forward_loop=forward_loop)
 
         all_keeps = _resolve_keeps(config)
@@ -439,6 +440,7 @@ def _quantize_and_save(
             _disable_quantizers_by_pattern(model, all_keeps)
 
         log.info("Compressing weights to real %s...", dtype)
+        model.cuda()
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="Real quantization has been applied")
             mtq.compress(model)
