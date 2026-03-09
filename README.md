@@ -94,30 +94,6 @@ kuantala convert ./output-Wan-AI-Wan2.2-I2V-A14B-Diffusers/transformer-NVFP4.saf
 
 ## CLI Reference
 
-### `kuantala quantize`
-
-```
-kuantala quantize [OPTIONS] MODEL
-```
-
-| Option | Description |
-|--------|-------------|
-| `MODEL` | HuggingFace diffusers model ID or local directory path (required) |
-| `-d, --dtype` | Target format: `FP8`, `NVFP4` (default: `NVFP4`) |
-| `-o, --output` | Output directory (default: `output-<MODEL_ID>`) |
-| `--vae-dtype` | VAE dtype (default: `skip`). Same choices as `--dtype` plus `skip` |
-| `--te-dtype` | Text encoder dtype (default: `skip`) |
-| `--ie-dtype` | Image encoder dtype (default: `skip`) |
-| `--algorithm` | Calibration algorithm: `max`, `smoothquant`, `awq_lite`, `awq_full`, `mse` (default: `max`) |
-| `--keep PATTERN` | Disable quantization on layers matching this glob pattern (repeatable) |
-| `--use-default-keeps` | Apply preset keep patterns: `wan`, `flux`, `ltx`, `z-image`, `qwen-image` (auto-detected for known HF model IDs) |
-| `--no-default-keeps` | Disable auto-detected default keep patterns |
-| `--prompts FILE` | File with calibration prompts, one per line (default: HF dataset) |
-| `--nprompts N` | Number of calibration prompts (default: 256) |
-| `--nsteps N` | Inference steps per calibration prompt (default: 30) |
-| `--resolution` | Calibration resolution: `480p`, `540p`, `720p`, `1080p`, `4k`, or `HEIGHTxWIDTH` (default: `480p`) |
-| `--psrc` | Prompt source: `t2i`, `t2v`, `i2v`, `ti2i` (auto-detected for known HF model IDs) |
-
 ### `kuantala analyze`
 
 ```
@@ -129,7 +105,7 @@ Uses modelopt's `auto_quantize` to find the optimal quantization format per laye
 | Option | Description |
 |--------|-------------|
 | `MODEL` | HuggingFace diffusers model ID or local directory path (required) |
-| `-d, --dtypes` | Quantization formats to consider: `FP8`, `NVFP4` (repeatable, required) |
+| `-d, --dtypes` | Quantization formats to consider: `FP8`, `NVFP4` (repeatable, default: `NVFP4`) |
 | `--effective-bits` | Target average bits per parameter (default: `4.8`) |
 | `--nprompts N` | Number of pipeline runs to capture inputs (default: 8) |
 | `--nsteps N` | Inference steps per pipeline run (default: 10) |
@@ -153,14 +129,6 @@ kuantala components [OPTIONS] MODEL
 |--------|-------------|
 | `MODEL` | HuggingFace diffusers model ID or local directory path (required) |
 
-### `kuantala estimate`
-
-```
-kuantala estimate MODEL
-```
-
-Estimates output sizes for all formats from parameter counts. No actual quantization is performed. VAE is excluded (skipped by default). The model must be downloaded locally.
-
 ### `kuantala config`
 
 ```
@@ -180,6 +148,14 @@ kuantala convert [OPTIONS] INPUT
 | `INPUT` | Path to a Model Optimizer NVFP4 `.safetensors` file (required) |
 | `-o, --output` | Output file path (default: `{input_stem}-comfyui.safetensors`) |
 | `--remap-keys` | Remap diffusers key names to original: `wan` |
+
+### `kuantala estimate`
+
+```
+kuantala estimate MODEL
+```
+
+Estimates output sizes for all formats from parameter counts. No actual quantization is performed. VAE is excluded (skipped by default). The model must be downloaded locally.
 
 ### `kuantala eval`
 
@@ -212,6 +188,38 @@ kuantala eval Wan-AI/Wan2.2-I2V-A14B-Diffusers -q ./output-wan --decode
 kuantala eval ./local-model -q ./output --prompts eval_prompts.txt --nprompts 8
 ```
 
+### `kuantala info`
+
+```
+kuantala info
+```
+
+Shows supported quantization formats, default keep presets, and known models.
+
+### `kuantala quantize`
+
+```
+kuantala quantize [OPTIONS] MODEL
+```
+
+| Option | Description |
+|--------|-------------|
+| `MODEL` | HuggingFace diffusers model ID or local directory path (required) |
+| `-d, --dtype` | Target format: `FP8`, `NVFP4` (default: `NVFP4`) |
+| `-o, --output` | Output directory (default: `output-<MODEL_ID>`) |
+| `--vae-dtype` | VAE dtype (default: `skip`). Same choices as `--dtype` plus `skip` |
+| `--te-dtype` | Text encoder dtype (default: `skip`) |
+| `--ie-dtype` | Image encoder dtype (default: `skip`) |
+| `--algorithm` | Calibration algorithm (default: `max`). `max` — uses max absolute values for scale factors (fastest). `smoothquant` — migrates quantization difficulty from activations to weights. `awq_lite` — activation-aware weight quantization (lightweight search). `awq_full` — activation-aware weight quantization (full search, slowest). `mse` — minimizes mean squared error between original and quantized outputs. |
+| `--keep PATTERN` | Disable quantization on layers matching this glob pattern (repeatable) |
+| `--use-default-keeps` | Apply preset keep patterns: `wan`, `flux`, `ltx`, `z-image`, `qwen-image` (auto-detected for known HF model IDs) |
+| `--no-default-keeps` | Disable auto-detected default keep patterns |
+| `--prompts FILE` | File with calibration prompts, one per line (default: HF dataset) |
+| `--nprompts N` | Number of calibration prompts (default: 256) |
+| `--nsteps N` | Inference steps per calibration prompt (default: 30) |
+| `--resolution` | Calibration resolution: `480p`, `540p`, `720p`, `1080p`, `4k`, or `HEIGHTxWIDTH` (default: `480p`) |
+| `--psrc` | Prompt source: `t2i`, `t2v`, `i2v`, `ti2i` (auto-detected for known HF model IDs) |
+
 ### `kuantala tensors`
 
 ```
@@ -219,14 +227,6 @@ kuantala tensors FILE_PATH
 ```
 
 Shows per-tensor detail: name, dtype, shape, and parameter count. Also shows a dtype summary.
-
-### `kuantala info`
-
-```
-kuantala info
-```
-
-Shows supported quantization formats and default keep presets.
 
 ### Global Options
 
@@ -240,7 +240,7 @@ Kuantala detects and quantizes the following component types from diffusers mode
 
 | Component | Flag | Default |
 |-----------|------|---------|
-| Transformer / UNet | `--dtype` | required |
+| Transformer / UNet | `--dtype` | `NVFP4` |
 | Text encoder | `--te-dtype` | `skip` |
 | Image encoder | `--ie-dtype` | `skip` |
 | VAE | `--vae-dtype` | `skip` |
