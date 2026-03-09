@@ -103,7 +103,7 @@ kuantala quantize [OPTIONS] MODEL
 | Option | Description |
 |--------|-------------|
 | `MODEL` | HuggingFace diffusers model ID or local directory path (required) |
-| `-d, --dtype` | Target format: `FP8`, `NVFP4` (required) |
+| `-d, --dtype` | Target format: `FP8`, `NVFP4` (default: `NVFP4`) |
 | `-o, --output` | Output directory (default: `output-<MODEL_ID>`) |
 | `--vae-dtype` | VAE dtype (default: `skip`). Same choices as `--dtype` plus `skip` |
 | `--te-dtype` | Text encoder dtype (default: `skip`) |

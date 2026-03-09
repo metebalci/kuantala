@@ -24,8 +24,8 @@ def cli(verbose: bool) -> None:
 
 @cli.command()
 @click.argument("model", metavar="MODEL_ID_OR_PATH")
-@click.option("--dtype", "-d", required=True, type=click.Choice(DTYPES, case_sensitive=False),
-              help="Target quantization type.")
+@click.option("--dtype", "-d", type=click.Choice(DTYPES, case_sensitive=False), default="NVFP4",
+              help="Target quantization type (default: NVFP4).")
 @click.option("--output", "-o", type=click.Path(path_type=Path), default=None,
               help="Output directory (default: output-<MODEL_ID>).")
 @click.option("--vae-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=False),
@@ -150,9 +150,9 @@ def _parse_resolution(resolution: str) -> tuple[int, int]:
 
 @cli.command()
 @click.argument("model", metavar="MODEL_ID_OR_PATH")
-@click.option("--dtypes", "-d", required=True, multiple=True,
+@click.option("--dtypes", "-d", multiple=True, default=("NVFP4",),
               type=click.Choice(DTYPES, case_sensitive=False),
-              help="Quantization formats to consider (repeatable).")
+              help="Quantization formats to consider (repeatable, default: NVFP4).")
 @click.option("--effective-bits", type=float, default=4.8,
               help="Target average bits per parameter (default: 4.8).")
 @click.option("--nprompts", type=int, default=8,
