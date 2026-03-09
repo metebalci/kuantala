@@ -51,6 +51,7 @@ def cli(verbose: bool) -> None:
               help="Calibration resolution: 480p, 540p, 720p, 1080p, 4k, or HEIGHTxWIDTH (default: auto or 480p).")
 @click.option("--psrc", type=click.Choice(PROMPT_SOURCES, case_sensitive=False), default=None,
               help="Prompt source: t2i, t2v, i2v (auto-detected for known HF model IDs).")
+@click.option("--cpu-offload", is_flag=True, help="Use CPU offload to reduce VRAM usage (slower).")
 def quantize(
     model: str,
     dtype: str,
@@ -67,6 +68,7 @@ def quantize(
     nsteps: int | None,
     resolution: str | None,
     psrc: str | None,
+    cpu_offload: bool,
 ) -> None:
     """Quantize a generative model.
 
@@ -118,6 +120,7 @@ def quantize(
         calib_resolution=calib_resolution,
         calib_prompts=prompt_list,
         num_frames=defaults.get("num_frames"),
+        cpu_offload=cpu_offload,
         prompt_source=psrc,
         keep=list(keep),
     )
@@ -168,6 +171,7 @@ def _parse_resolution(resolution: str) -> tuple[int, int]:
               help="Inference steps per pipeline run (default: auto or 10).")
 @click.option("--resolution", type=str, default=None,
               help="Calibration resolution: 480p, 540p, 720p, 1080p, 4k, or HEIGHTxWIDTH (default: auto or 480p).")
+@click.option("--cpu-offload", is_flag=True, help="Use CPU offload to reduce VRAM usage (slower).")
 def analyze(
     model: str,
     dtypes: tuple[str, ...],
@@ -175,6 +179,7 @@ def analyze(
     nprompts: int,
     nsteps: int | None,
     resolution: str | None,
+    cpu_offload: bool,
 ) -> None:
     """Analyze optimal per-layer quantization format selection.
 
@@ -217,6 +222,7 @@ def analyze(
         num_steps=nsteps,
         resolution=calib_resolution,
         num_frames=defaults.get("num_frames"),
+        cpu_offload=cpu_offload,
     )
 
     # Display results
@@ -681,6 +687,7 @@ def convert(input_file: Path, output: Path | None, remap_keys: str | None) -> No
               help="Also compare decoded pixel-space outputs (default: latent only).")
 @click.option("--psrc", type=click.Choice(PROMPT_SOURCES, case_sensitive=False), default=None,
               help="Prompt source: t2i, t2v, i2v (auto-detected for known HF model IDs).")
+@click.option("--cpu-offload", is_flag=True, help="Use CPU offload to reduce VRAM usage (slower).")
 def eval_cmd(
     model: str,
     quantized_dir: Path,
@@ -690,6 +697,7 @@ def eval_cmd(
     resolution: str | None,
     decode: bool,
     psrc: str | None,
+    cpu_offload: bool,
 ) -> None:
     """Evaluate quantization quality by comparing original vs quantized outputs.
 
@@ -730,6 +738,7 @@ def eval_cmd(
         custom_prompts=prompt_list,
         prompt_source=psrc,
         num_frames=defaults.get("num_frames"),
+        cpu_offload=cpu_offload,
     )
 
     _display_eval_results(results, decode)

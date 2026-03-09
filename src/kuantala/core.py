@@ -188,14 +188,18 @@ def _load_model(component: ModelComponent) -> torch.nn.Module:
     return model
 
 
-def _load_pipeline(model_dir: Path) -> Any:
+def _load_pipeline(model_dir: Path, cpu_offload: bool = False) -> Any:
     """Load the full diffusers pipeline for calibration."""
     from diffusers import DiffusionPipeline
 
     log.info("Loading pipeline from %s...", model_dir)
     pipe = DiffusionPipeline.from_pretrained(str(model_dir), torch_dtype=torch.bfloat16)
-    pipe.to("cuda")
-    log.info("Pipeline loaded on CUDA")
+    if cpu_offload:
+        pipe.enable_model_cpu_offload()
+        log.info("Pipeline loaded with CPU offload")
+    else:
+        pipe.to("cuda")
+        log.info("Pipeline loaded on CUDA")
     return pipe
 
 
@@ -490,7 +494,7 @@ def quantize(config: QuantConfig) -> list[Path]:
 
     # Quantize transformer/unet with pipeline-based calibration
     if pipeline_components:
-        pipe = _load_pipeline(model_dir)
+        pipe = _load_pipeline(model_dir, cpu_offload=config.cpu_offload)
 
         if config.calib_prompts:
             prompts = config.calib_prompts[:config.calib_size]
@@ -545,6 +549,7 @@ def analyze(
     num_steps: int,
     resolution: tuple[int, int],
     num_frames: int | None = None,
+    cpu_offload: bool = False,
 ) -> dict:
     """Run auto_quantize to find optimal per-layer format selection.
 
@@ -553,7 +558,7 @@ def analyze(
     bits constraint. Returns the auto_quantize state_dict.
     """
     model_dir = resolve_model_path(model_source)
-    pipe = _load_pipeline(model_dir)
+    pipe = _load_pipeline(model_dir, cpu_offload=cpu_offload)
 
     # Find transformer/unet
     transformer = None
@@ -754,6 +759,7 @@ def evaluate(
     custom_prompts: list[str] | None = None,
     prompt_source: str | None = None,
     num_frames: int | None = None,
+    cpu_offload: bool = False,
 ) -> dict[str, Any]:
     """Compare original vs quantized pipeline outputs.
 
@@ -781,7 +787,7 @@ def evaluate(
 
     # Load original pipeline
     log.info("Loading original pipeline for reference outputs...")
-    pipe = _load_pipeline(model_dir)
+    pipe = _load_pipeline(model_dir, cpu_offload=cpu_offload)
     pipe_kwargs = _build_pipeline_kwargs(
         pipe, num_steps, resolution, has_dataset_images=dataset_images is not None,
         num_frames=num_frames,

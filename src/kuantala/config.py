@@ -209,6 +209,7 @@ class QuantConfig:
     calib_steps: int = 30  # number of inference steps per prompt
     calib_resolution: tuple[int, int] = (480, 848)  # (height, width) for calibration
     num_frames: int | None = None  # video models: frames per generation (auto-detected)
+    cpu_offload: bool = False  # use CPU offload to reduce VRAM usage (slower)
     calib_prompts: list[str] | None = None  # custom prompts (default: HF dataset)
 
     # Prompt source: t2i, t2v, i2v (auto-detected for known model IDs)
