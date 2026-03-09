@@ -239,7 +239,7 @@ def analyze(
     table = Table(title="Per-Layer Format Selection", title_style="bold")
     table.add_column("#", justify="right", style="dim")
     table.add_column("Layer")
-    table.add_column("Selected Format", style="cyan")
+    table.add_column("Selected Format", style="")
     table.add_column("Score", justify="right")
 
     format_counts: dict[str, int] = {}
@@ -263,7 +263,7 @@ def analyze(
 
     # Summary
     summary = Table(title="Summary", title_style="bold")
-    summary.add_column("Metric", style="cyan")
+    summary.add_column("Metric", style="")
     summary.add_column("Value")
 
     actual_bits = constraints.get("effective_bits", "?")
@@ -297,7 +297,7 @@ def components(model: str, show_all: bool) -> None:
         console.print(f"[bold]Pipeline:[/] {model_type}")
 
     table = Table(title="Components", title_style="bold")
-    table.add_column("Name", style="cyan")
+    table.add_column("Name", style="")
     table.add_column("Type", style="green")
     table.add_column("Class")
     table.add_column("Params", justify="right")
@@ -430,7 +430,7 @@ def _count_params_from_header(header: dict) -> int:
 def info() -> None:
     """Show supported formats and default keep presets."""
     table = Table(title="Quantization Formats", title_style="bold")
-    table.add_column("Format", style="cyan")
+    table.add_column("Format", style="")
     table.add_column("Description")
 
     descriptions = {
@@ -444,7 +444,7 @@ def info() -> None:
     console.print(table)
 
     keeps_table = Table(title="Default Keep Presets", title_style="bold")
-    keeps_table.add_column("Preset", style="cyan")
+    keeps_table.add_column("Preset", style="")
     keeps_table.add_column("Patterns")
 
     for name in sorted(DEFAULT_KEEPS):
@@ -456,7 +456,7 @@ def info() -> None:
     from kuantala.config import MODEL_DEFAULTS
 
     models_table = Table(title="Known Models", title_style="bold", caption="*: Active parameters (MoE)", caption_style="")
-    models_table.add_column("Model ID", style="cyan")
+    models_table.add_column("Model ID", style="")
     models_table.add_column("Size")
     models_table.add_column("Keep\nPreset")
     models_table.add_column("Prompt\nSource")
@@ -526,7 +526,7 @@ def estimate(model: str) -> None:
         return f"{b / (1024 ** 2):.0f} MB"
 
     table = Table(title="Estimated Output Sizes", title_style="bold")
-    table.add_column("Format", style="cyan")
+    table.add_column("Format", style="")
     table.add_column("Size", justify="right")
     table.add_column("vs FP16", justify="right")
 
@@ -772,8 +772,8 @@ def _display_eval_results(results: dict, decode: bool) -> None:
         table.add_column("#", justify="right", style="dim")
         table.add_column("Prompt", max_width=40, no_wrap=True)
         table.add_column("Seed", justify="right")
-        table.add_column("Latent PSNR", justify="right", style="cyan")
-        table.add_column("Latent SSIM", justify="right", style="cyan")
+        table.add_column("Latent PSNR", justify="right", style="")
+        table.add_column("Latent SSIM", justify="right", style="")
         if decode:
             table.add_column("Pixel PSNR", justify="right", style="green")
             table.add_column("Pixel SSIM", justify="right", style="green")
@@ -832,7 +832,7 @@ def _display_eval_results(results: dict, decode: bool) -> None:
 
         # Summary table
         summary = Table(title=f"Summary: {label}", title_style="bold")
-        summary.add_column("Metric", style="cyan")
+        summary.add_column("Metric", style="")
         summary.add_column("Value")
 
         summary.add_row("Component", comp_data["component"])
@@ -1089,7 +1089,7 @@ def _print_layers_and_summary(
     table = Table(title="Tensors", title_style="bold")
     table.add_column("#", justify="right", style="dim")
     table.add_column("Name")
-    table.add_column("Dtype", style="cyan")
+    table.add_column("Dtype", style="")
     table.add_column("Shape")
     table.add_column("Parameters", justify="right")
 
@@ -1100,7 +1100,7 @@ def _print_layers_and_summary(
     console.print(table)
 
     summary = Table(title="Dtype Summary", title_style="bold")
-    summary.add_column("Dtype", style="cyan")
+    summary.add_column("Dtype", style="")
     summary.add_column("Tensors", justify="right")
     summary.add_column("Parameters", justify="right")
     summary.add_column("% of Total", justify="right")
