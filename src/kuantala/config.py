@@ -94,95 +94,95 @@ DEFAULT_KEEPS_NAMES = list(DEFAULT_KEEPS.keys())
 MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
     # Wan models
     "Wan-AI/Wan2.2-I2V-A14B-Diffusers": {
-        "keeps": "wan", "psrc": "i2v",
+        "keeps": "wan", "psrc": "i2v", "size": "14B*",
         "resolution": (720, 1280), "steps": 40, "num_frames": 81,
     },
     "Wan-AI/Wan2.2-T2V-A14B-Diffusers": {
-        "keeps": "wan", "psrc": "t2v",
+        "keeps": "wan", "psrc": "t2v", "size": "14B*",
         "resolution": (720, 1280), "steps": 40, "num_frames": 81,
     },
     # FLUX models
     "black-forest-labs/FLUX.1-dev": {
-        "keeps": "flux", "psrc": "t2i",
+        "keeps": "flux", "psrc": "t2i", "size": "12B",
         "resolution": (1024, 1024), "steps": 50,
     },
     "black-forest-labs/FLUX.1-schnell": {
-        "keeps": "flux", "psrc": "t2i",
+        "keeps": "flux", "psrc": "t2i", "size": "12B",
         "resolution": (1024, 1024), "steps": 4,
     },
     "black-forest-labs/FLUX.1-Kontext-dev": {
-        "keeps": "flux", "psrc": "ti2i",
+        "keeps": "flux", "psrc": "ti2i", "size": "12B",
         "resolution": (1024, 1024), "steps": 28,
     },
     "black-forest-labs/FLUX.1-Krea-dev": {
-        "keeps": "flux", "psrc": "t2i",
+        "keeps": "flux", "psrc": "t2i", "size": "12B",
         "resolution": (1024, 1024), "steps": 28,
     },
     "black-forest-labs/FLUX.2-dev": {
-        "keeps": "flux", "psrc": "t2i",
+        "keeps": "flux", "psrc": "t2i", "size": "32B",
         "resolution": (1024, 1024), "steps": 28,
     },
     "black-forest-labs/FLUX.2-klein-base-9B": {
-        "keeps": "flux", "psrc": "t2i",
+        "keeps": "flux", "psrc": "t2i", "size": "9B",
         "resolution": (1024, 1024), "steps": 50,
     },
     # Stability AI models
     "stabilityai/stable-diffusion-xl-base-1.0": {
-        "keeps": "sdxl", "psrc": "t2i",
+        "keeps": "sdxl", "psrc": "t2i", "size": "2.6B",
         "resolution": (1024, 1024), "steps": 30,
     },
     "stabilityai/sdxl-turbo": {
-        "keeps": "sdxl", "psrc": "t2i",
+        "keeps": "sdxl", "psrc": "t2i", "size": "2.6B",
         "resolution": (512, 512), "steps": 1,
     },
     "stabilityai/stable-video-diffusion-img2vid-xt-1-1": {
-        "keeps": "sdxl", "psrc": "i2v",
+        "keeps": "sdxl", "psrc": "i2v", "size": "1.5B",
         "resolution": (576, 1024), "steps": 25, "num_frames": 25,
     },
     # CogVideoX models
     "zai-org/CogVideoX-5b": {
-        "keeps": "cogvideox", "psrc": "t2v",
+        "keeps": "cogvideox", "psrc": "t2v", "size": "5B",
         "resolution": (480, 720), "steps": 50, "num_frames": 49,
     },
     "zai-org/CogVideoX-5b-I2V": {
-        "keeps": "cogvideox", "psrc": "i2v",
+        "keeps": "cogvideox", "psrc": "i2v", "size": "5B",
         "resolution": (480, 720), "steps": 50, "num_frames": 49,
     },
-    # Other image models
+    # Other models
     "HiDream-ai/HiDream-I1-Full": {
-        "psrc": "t2i",
+        "psrc": "t2i", "size": "17B",
         "resolution": (1024, 1024), "steps": 50,
     },
     "HiDream-ai/HiDream-E1-1": {
-        "psrc": "ti2i",
+        "psrc": "ti2i", "size": "17B",
         "resolution": (768, 768), "steps": 28,
     },
     "Lightricks/LTX-2": {
-        "keeps": "ltx", "psrc": "t2v",
+        "keeps": "ltx", "psrc": "t2v", "size": "19B",
         "resolution": (512, 768), "steps": 40, "num_frames": 121,
     },
     "nvidia/Cosmos-Predict2-14B-Text2Image": {
-        "psrc": "t2i",
+        "psrc": "t2i", "size": "14B",
         "resolution": (768, 1360), "steps": 35,
     },
     "nvidia/Cosmos-Predict2-14B-Video2World": {
-        "psrc": "i2v",
+        "psrc": "i2v", "size": "14B",
         "resolution": (704, 1280), "steps": 35, "num_frames": 93,
     },
     "Qwen/Qwen-Image-2512": {
-        "keeps": "qwen-image", "psrc": "t2i",
+        "keeps": "qwen-image", "psrc": "t2i", "size": "20B",
         "resolution": (1328, 1328), "steps": 50,
     },
     "Qwen/Qwen-Image-Edit-2511": {
-        "keeps": "qwen-image", "psrc": "ti2i",
+        "keeps": "qwen-image", "psrc": "ti2i", "size": "20B",
         "resolution": (1328, 1328), "steps": 50,
     },
     "Tongyi-MAI/Z-Image": {
-        "keeps": "z-image", "psrc": "t2i",
+        "keeps": "z-image", "psrc": "t2i", "size": "6B",
         "resolution": (720, 1280), "steps": 50,
     },
     "Tongyi-MAI/Z-Image-Turbo": {
-        "keeps": "z-image", "psrc": "t2i",
+        "keeps": "z-image", "psrc": "t2i", "size": "6B",
         "resolution": (1024, 1024), "steps": 9,
     },
 }
