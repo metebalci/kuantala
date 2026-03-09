@@ -210,7 +210,14 @@ kuantala quantize [OPTIONS] MODEL
 | `--vae-dtype` | VAE dtype (default: `skip`). Same choices as `--dtype` plus `skip` |
 | `--te-dtype` | Text encoder dtype (default: `skip`) |
 | `--ie-dtype` | Image encoder dtype (default: `skip`) |
-| `--algorithm` | Calibration algorithm (default: `max`). `max` — uses max absolute values for scale factors (fastest). `smoothquant` — migrates quantization difficulty from activations to weights. `awq_lite` — activation-aware weight quantization (lightweight search). `awq_full` — activation-aware weight quantization (full search, slowest). `mse` — minimizes mean squared error between original and quantized outputs. |
+| `--algorithm` | Calibration algorithm (default: `max`, see below) |
+
+Calibration algorithms:
+- `max` — Scale factors from max absolute values. Fastest, good default.
+- `smoothquant` — Migrates quantization difficulty from activations to weights for better accuracy.
+- `awq_lite` — Activation-aware weight quantization with lightweight search.
+- `awq_full` — Activation-aware weight quantization with full search. Slowest, best quality.
+- `mse` — Minimizes mean squared error between original and quantized outputs.
 | `--keep PATTERN` | Disable quantization on layers matching this glob pattern (repeatable) |
 | `--use-default-keeps` | Apply preset keep patterns: `wan`, `flux`, `ltx`, `z-image`, `qwen-image` (auto-detected for known HF model IDs) |
 | `--no-default-keeps` | Disable auto-detected default keep patterns |
