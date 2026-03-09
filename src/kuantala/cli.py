@@ -26,8 +26,8 @@ def cli(verbose: bool) -> None:
 @click.argument("model", metavar="MODEL_ID_OR_PATH")
 @click.option("--dtype", "-d", required=True, type=click.Choice(ALL_DTYPES, case_sensitive=False),
               help="Target quantization type.")
-@click.option("--output", "-o", type=click.Path(path_type=Path), default=Path("./output"),
-              help="Output directory.")
+@click.option("--output", "-o", type=click.Path(path_type=Path), default=None,
+              help="Output directory (default: output-<MODEL_ID>).")
 @click.option("--vae-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=False),
               default="skip", help="VAE quantization dtype (default: skip).")
 @click.option("--te-dtype", type=click.Choice(COMPONENT_DTYPES, case_sensitive=False),
@@ -66,6 +66,11 @@ def quantize(
     """
     from kuantala.config import QuantConfig
     from kuantala.core import quantize as run_quantize
+
+    # Default output directory based on model name
+    if output is None:
+        safe_name = model.replace("/", "-").strip("-")
+        output = Path(f"output-{safe_name}")
 
     # Normalize case
     dtype = dtype.upper()

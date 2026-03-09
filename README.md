@@ -25,13 +25,13 @@ Kuantala requires models in **diffusers format** (with `model_index.json`). If a
 kuantala info
 
 # Quantize to FP8 (~50% size, ~2x inference speed on Hopper+/Blackwell)
-kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype FP8 --output ./output-wan
+kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype FP8
 
 # Quantize to NVFP4 (~75% size, fastest on Blackwell)
-kuantala quantize ./local-model --dtype NVFP4 --output ./output-model
+kuantala quantize ./local-model --dtype NVFP4
 
 # Convert FP32 model to BF16
-kuantala quantize ./old-model --dtype BF16 --output ./output-model
+kuantala quantize ./old-model --dtype BF16
 
 # Inspect model components
 kuantala components Wan-AI/Wan2.2-I2V-A14B-Diffusers
@@ -87,8 +87,8 @@ The conversion performs:
 
 Full workflow (Wan example):
 ```bash
-kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4 --output ./output-wan
-kuantala convert ./output-wan/transformer-NVFP4.safetensors --remap-keys wan
+kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4
+kuantala convert ./output-Wan-AI-Wan2.2-I2V-A14B-Diffusers/transformer-NVFP4.safetensors --remap-keys wan
 # Load transformer-NVFP4-comfyui.safetensors in ComfyUI
 ```
 
@@ -104,7 +104,7 @@ kuantala quantize [OPTIONS] MODEL
 |--------|-------------|
 | `MODEL` | HuggingFace diffusers model ID or local directory path (required) |
 | `-d, --dtype` | Target format: `FP8`, `NVFP4`, `FP16`, `BF16` (required) |
-| `-o, --output` | Output directory (default: `./output`) |
+| `-o, --output` | Output directory (default: `output-<MODEL_ID>`) |
 | `--vae-dtype` | VAE dtype (default: `skip`). Same choices as `--dtype` plus `skip` |
 | `--te-dtype` | Text encoder dtype (default: `skip`) |
 | `--ie-dtype` | Image encoder dtype (default: `skip`) |
@@ -215,25 +215,25 @@ Use `--use-default-keeps <preset>` to explicitly select a preset (e.g. for local
 
 ```bash
 # Wan 2.2 I2V / T2V 14B (keeps auto-detected)
-kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4 --output ./output-wan
+kuantala quantize Wan-AI/Wan2.2-I2V-A14B-Diffusers --dtype NVFP4
 
 # FLUX.2 dev
-kuantala quantize black-forest-labs/FLUX.2-dev --dtype NVFP4 --output ./output-flux2
+kuantala quantize black-forest-labs/FLUX.2-dev --dtype NVFP4
 
 # FLUX.1 Krea dev
-kuantala quantize black-forest-labs/FLUX.1-Krea-dev --dtype NVFP4 --output ./output-flux1-krea
+kuantala quantize black-forest-labs/FLUX.1-Krea-dev --dtype NVFP4
 
 # LTX-2
-kuantala quantize Lightricks/LTX-2 --dtype NVFP4 --output ./output-ltx2
+kuantala quantize Lightricks/LTX-2 --dtype NVFP4
 
 # Z-Image
-kuantala quantize Tongyi-MAI/Z-Image --dtype NVFP4 --output ./output-z-image
+kuantala quantize Tongyi-MAI/Z-Image --dtype NVFP4
 
 # Qwen-Image-2512
-kuantala quantize Qwen/Qwen-Image-2512 --dtype NVFP4 --output ./output-qwen-image
+kuantala quantize Qwen/Qwen-Image-2512 --dtype NVFP4
 
 # Qwen-Image-Edit-2511
-kuantala quantize Qwen/Qwen-Image-Edit-2511 --dtype NVFP4 --output ./output-qwen-image-edit
+kuantala quantize Qwen/Qwen-Image-Edit-2511 --dtype NVFP4
 ```
 
 Norms (`FP32LayerNorm`, `RMSNorm`) and embeddings (`WanRotaryPosEmbed`) are already kept at original precision by Model Optimizer.
@@ -247,7 +247,7 @@ from kuantala import QuantConfig, quantize
 config = QuantConfig(
     model_source="Wan-AI/Wan2.2-I2V-A14B-Diffusers",
     dtype="NVFP4",
-    output_dir=Path("./output"),
+    output_dir=Path("./output-wan"),
     keep=[
         "*patch_embedding*", "*condition_embedder*", "*proj_out*",
         "*blocks.0.*", "*blocks.1.*", "*blocks.2.*",
