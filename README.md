@@ -118,6 +118,7 @@ Uses modelopt's `auto_quantize` to find the optimal quantization format per laye
 | `--nprompts N` | Number of pipeline runs to capture inputs (default: 8) |
 | `--nsteps N` | Inference steps per pipeline run (default: 10) |
 | `--resolution` | Calibration resolution: `480p`, `540p`, `720p`, `1080p`, `4k`, or `HEIGHTxWIDTH` (default: `480p`) |
+| `--offload` | CPU offload mode: `model` (component-level) or `layers` (layer-level, slower but less VRAM) |
 
 ```bash
 # Analyze optimal format mix between FP8 and NVFP4
@@ -184,6 +185,8 @@ Compares original vs quantized pipeline outputs using PSNR and SSIM metrics. Run
 | `--resolution` | Resolution: `480p`, `540p`, `720p`, `1080p`, `4k`, or `HEIGHTxWIDTH` (default: `480p`) |
 | `--decode` | Also compare decoded pixel-space outputs (default: latent only) |
 | `--psrc` | Prompt source: `t2i`, `t2v`, `i2v`, `ti2i` (auto-detected for known HF model IDs) |
+| `--offset N` | Dataset offset for eval prompts to avoid overlap with calibration (default: 1024) |
+| `--offload` | CPU offload mode: `model` (component-level) or `layers` (layer-level, slower but less VRAM) |
 
 ```bash
 # Basic eval
@@ -230,10 +233,11 @@ Calibration algorithms:
 | `--use-default-keeps` | Apply preset keep patterns: `wan`, `flux`, `ltx`, `z-image`, `qwen-image` (auto-detected for known HF model IDs) |
 | `--no-default-keeps` | Disable auto-detected default keep patterns |
 | `--prompts FILE` | File with calibration prompts, one per line (default: HF dataset) |
-| `--nprompts N` | Number of calibration prompts (default: 256) |
+| `--nprompts N` | Number of calibration prompts (default: 32) |
 | `--nsteps N` | Inference steps per calibration prompt (default: 30) |
 | `--resolution` | Calibration resolution: `480p`, `540p`, `720p`, `1080p`, `4k`, or `HEIGHTxWIDTH` (default: `480p`) |
 | `--psrc` | Prompt source: `t2i`, `t2v`, `i2v`, `ti2i` (auto-detected for known HF model IDs) |
+| `--offload` | CPU offload mode: `model` (component-level) or `layers` (layer-level, slower but less VRAM) |
 
 ### `kuantala tensors`
 
