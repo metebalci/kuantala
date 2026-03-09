@@ -45,10 +45,10 @@ def cli(verbose: bool) -> None:
               help="File with calibration prompts, one per line (default: HF dataset).")
 @click.option("--nprompts", type=int, default=256,
               help="Number of calibration prompts to use (default: 256).")
-@click.option("--nsteps", type=int, default=30,
-              help="Number of inference steps per calibration prompt (default: 30).")
-@click.option("--resolution", type=str, default="480p",
-              help="Calibration resolution: 480p, 540p, 720p, 1080p, 4k, or HEIGHTxWIDTH (default: 480p).")
+@click.option("--nsteps", type=int, default=None,
+              help="Number of inference steps per calibration prompt (default: auto or 30).")
+@click.option("--resolution", type=str, default=None,
+              help="Calibration resolution: 480p, 540p, 720p, 1080p, 4k, or HEIGHTxWIDTH (default: auto or 480p).")
 @click.option("--psrc", type=click.Choice(PROMPT_SOURCES, case_sensitive=False), default=None,
               help="Prompt source: t2i, t2v, i2v (auto-detected for known HF model IDs).")
 def quantize(
@@ -64,8 +64,8 @@ def quantize(
     algorithm: str,
     prompts: Path | None,
     nprompts: int,
-    nsteps: int,
-    resolution: str,
+    nsteps: int | None,
+    resolution: str | None,
     psrc: str | None,
 ) -> None:
     """Quantize a generative model.
@@ -73,15 +73,21 @@ def quantize(
     MODEL is a HuggingFace diffusers model ID (e.g. Wan-AI/Wan2.2-I2V-A14B-Diffusers)
     or a local directory path in diffusers format (with model_index.json).
     """
-    from kuantala.config import QuantConfig
+    from kuantala.config import QuantConfig, get_model_defaults
     from kuantala.core import quantize as run_quantize
+
+    defaults = get_model_defaults(model)
 
     # Default output directory based on model name
     if output is None:
         safe_name = model.replace("/", "-").strip("-")
         output = Path(f"output-{safe_name}")
 
-    calib_resolution = _parse_resolution(resolution)
+    if nsteps is None:
+        nsteps = defaults.get("steps", 30)
+    if resolution is None:
+        resolution = defaults.get("resolution")
+    calib_resolution = _parse_resolution(resolution) if isinstance(resolution, str) else resolution or (480, 848)
 
     # Normalize case
     dtype = dtype.upper()
@@ -111,6 +117,7 @@ def quantize(
         calib_steps=nsteps,
         calib_resolution=calib_resolution,
         calib_prompts=prompt_list,
+        num_frames=defaults.get("num_frames"),
         prompt_source=psrc,
         keep=list(keep),
     )
@@ -157,17 +164,17 @@ def _parse_resolution(resolution: str) -> tuple[int, int]:
               help="Target average bits per parameter (default: 4.8).")
 @click.option("--nprompts", type=int, default=8,
               help="Number of pipeline runs to capture inputs (default: 8).")
-@click.option("--nsteps", type=int, default=10,
-              help="Inference steps per pipeline run (default: 10).")
-@click.option("--resolution", type=str, default="480p",
-              help="Calibration resolution: 480p, 540p, 720p, 1080p, 4k, or HEIGHTxWIDTH (default: 480p).")
+@click.option("--nsteps", type=int, default=None,
+              help="Inference steps per pipeline run (default: auto or 10).")
+@click.option("--resolution", type=str, default=None,
+              help="Calibration resolution: 480p, 540p, 720p, 1080p, 4k, or HEIGHTxWIDTH (default: auto or 480p).")
 def analyze(
     model: str,
     dtypes: tuple[str, ...],
     effective_bits: float,
     nprompts: int,
-    nsteps: int,
-    resolution: str,
+    nsteps: int | None,
+    resolution: str | None,
 ) -> None:
     """Analyze optimal per-layer quantization format selection.
 
@@ -176,9 +183,15 @@ def analyze(
 
     MODEL is a HuggingFace diffusers model ID or local directory path.
     """
+    from kuantala.config import get_model_defaults
     from kuantala.core import analyze as run_analyze
 
-    calib_resolution = _parse_resolution(resolution)
+    defaults = get_model_defaults(model)
+    if nsteps is None:
+        nsteps = defaults.get("steps", 10)
+    if resolution is None:
+        resolution = defaults.get("resolution")
+    calib_resolution = _parse_resolution(resolution) if isinstance(resolution, str) else resolution or (480, 848)
     dtype_list = [d.upper() for d in dtypes]
 
     # Validate effective_bits against selected formats
@@ -192,7 +205,8 @@ def analyze(
     console.print(f"\n[bold]Model:[/] {model}")
     console.print(f"[bold]Formats:[/] {', '.join(dtype_list)}")
     console.print(f"[bold]Target effective bits:[/] {effective_bits}")
-    console.print(f"[bold]Pipeline runs:[/] {nprompts} × {nsteps} steps @ {resolution}")
+    res_str = f"{calib_resolution[0]}x{calib_resolution[1]}"
+    console.print(f"[bold]Pipeline runs:[/] {nprompts} × {nsteps} steps @ {res_str}")
     console.print()
 
     state_dict = run_analyze(
@@ -202,6 +216,7 @@ def analyze(
         num_prompts=nprompts,
         num_steps=nsteps,
         resolution=calib_resolution,
+        num_frames=defaults.get("num_frames"),
     )
 
     # Display results
@@ -430,19 +445,24 @@ def info() -> None:
 
     console.print(keeps_table)
 
-    from kuantala.config import _MODEL_ID_TO_KEEPS, _MODEL_ID_TO_PROMPT_SOURCE
+    from kuantala.config import MODEL_DEFAULTS
 
     models_table = Table(title="Known Models", title_style="bold")
     models_table.add_column("Model ID", style="cyan")
     models_table.add_column("Keep Preset")
     models_table.add_column("Prompt Source")
+    models_table.add_column("Resolution")
+    models_table.add_column("Steps")
 
-    all_ids = sorted(set(_MODEL_ID_TO_KEEPS) | set(_MODEL_ID_TO_PROMPT_SOURCE))
-    for model_id in all_ids:
+    for model_id in sorted(MODEL_DEFAULTS):
+        defaults = MODEL_DEFAULTS[model_id]
+        h, w = defaults.get("resolution", (0, 0))
         models_table.add_row(
             model_id,
-            _MODEL_ID_TO_KEEPS.get(model_id, ""),
-            _MODEL_ID_TO_PROMPT_SOURCE.get(model_id, ""),
+            defaults.get("keeps", ""),
+            defaults.get("psrc", ""),
+            f"{h}x{w}" if h else "",
+            str(defaults.get("steps", "")),
         )
 
     console.print(models_table)
@@ -653,10 +673,10 @@ def convert(input_file: Path, output: Path | None, remap_keys: str | None) -> No
               help="File with eval prompts, one per line (default: HF dataset test split).")
 @click.option("--nprompts", type=int, default=16,
               help="Number of eval prompts (default: 16).")
-@click.option("--nsteps", type=int, default=30,
-              help="Number of inference steps (default: 30).")
-@click.option("--resolution", type=str, default="480p",
-              help="Resolution: 480p, 540p, 720p, 1080p, 4k, or HEIGHTxWIDTH (default: 480p).")
+@click.option("--nsteps", type=int, default=None,
+              help="Number of inference steps (default: auto or 30).")
+@click.option("--resolution", type=str, default=None,
+              help="Resolution: 480p, 540p, 720p, 1080p, 4k, or HEIGHTxWIDTH (default: auto or 480p).")
 @click.option("--decode", is_flag=True,
               help="Also compare decoded pixel-space outputs (default: latent only).")
 @click.option("--psrc", type=click.Choice(PROMPT_SOURCES, case_sensitive=False), default=None,
@@ -666,8 +686,8 @@ def eval_cmd(
     quantized_dir: Path,
     prompts: Path | None,
     nprompts: int,
-    nsteps: int,
-    resolution: str,
+    nsteps: int | None,
+    resolution: str | None,
     decode: bool,
     psrc: str | None,
 ) -> None:
@@ -678,9 +698,15 @@ def eval_cmd(
 
     MODEL is a HuggingFace diffusers model ID or local directory path.
     """
+    from kuantala.config import get_model_defaults
     from kuantala.core import evaluate
 
-    eval_resolution = _parse_resolution(resolution)
+    defaults = get_model_defaults(model)
+    if nsteps is None:
+        nsteps = defaults.get("steps", 30)
+    if resolution is None:
+        resolution = defaults.get("resolution")
+    eval_resolution = _parse_resolution(resolution) if isinstance(resolution, str) else resolution or (480, 848)
 
     prompt_list = None
     if prompts is not None:
@@ -690,7 +716,7 @@ def eval_cmd(
     console.print(f"[bold]Quantized dir:[/] {quantized_dir}")
     console.print(f"[bold]Prompts:[/] {nprompts} ({'custom' if prompts else 'HF dataset test split'})")
     console.print(f"[bold]Steps:[/] {nsteps}")
-    console.print(f"[bold]Resolution:[/] {resolution}")
+    console.print(f"[bold]Resolution:[/] {eval_resolution[0]}x{eval_resolution[1]}")
     console.print(f"[bold]Decode:[/] {'yes' if decode else 'no (latent only)'}")
     console.print()
 
@@ -703,6 +729,7 @@ def eval_cmd(
         decode=decode,
         custom_prompts=prompt_list,
         prompt_source=psrc,
+        num_frames=defaults.get("num_frames"),
     )
 
     _display_eval_results(results, decode)

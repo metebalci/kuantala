@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 
 DTYPES = ["FP8", "NVFP4"]
@@ -91,50 +92,102 @@ DEFAULT_KEEPS["qwen-image"] = [
     "*transformer_blocks.5[7-9].*",
 ]
 
+DEFAULT_KEEPS["sdxl"] = [
+    "*time_emb_proj*",
+    "*time_embedding*",
+    "*conv_in*",
+    "*conv_out*",
+    "*conv_shortcut*",
+    "*add_embedding*",
+    "*pos_embed*",
+]
+
+DEFAULT_KEEPS["pixart"] = [
+    "*time_emb_proj*",
+    "*time_embedding*",
+    "*pos_embed*",
+    "*x_embedder*",
+    "*norm_out*",
+]
+
 DEFAULT_KEEPS_NAMES = list(DEFAULT_KEEPS.keys())
 
-# Map HuggingFace model IDs to keep presets
-_MODEL_ID_TO_KEEPS: dict[str, str] = {
-    "Wan-AI/Wan2.2-I2V-A14B-Diffusers": "wan",
-    "Wan-AI/Wan2.2-T2V-A14B-Diffusers": "wan",
-    "black-forest-labs/FLUX.2-dev": "flux",
-    "black-forest-labs/FLUX.1-Krea-dev": "flux",
-    "Lightricks/LTX-2": "ltx",
-    "Tongyi-MAI/Z-Image": "z-image",
-    "Qwen/Qwen-Image-2512": "qwen-image",
-    "Qwen/Qwen-Image-Edit-2511": "qwen-image",
-    "Alpha-VLLM/Lumina-Image-2.0": "lumina-image",
-    "zai-org/CogVideoX-2b": "cogvideox",
-    "zai-org/CogVideoX-5b-I2V": "cogvideox",
-    "Shitao/OmniGen-v1-diffusers": "omnigen",
+
+# Per-model defaults: keeps, prompt source, resolution, steps, num_frames.
+# resolution is (height, width).
+MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
+    "Wan-AI/Wan2.2-I2V-A14B-Diffusers": {
+        "keeps": "wan", "psrc": "i2v",
+        "resolution": (720, 1280), "steps": 40, "num_frames": 81,
+    },
+    "Wan-AI/Wan2.2-T2V-A14B-Diffusers": {
+        "keeps": "wan", "psrc": "t2v",
+        "resolution": (720, 1280), "steps": 40, "num_frames": 81,
+    },
+    "black-forest-labs/FLUX.2-dev": {
+        "keeps": "flux", "psrc": "t2i",
+        "resolution": (1024, 1024), "steps": 28,
+    },
+    "black-forest-labs/FLUX.1-Krea-dev": {
+        "keeps": "flux", "psrc": "t2i",
+        "resolution": (1024, 1024), "steps": 28,
+    },
+    "Lightricks/LTX-2": {
+        "keeps": "ltx", "psrc": "t2v",
+        "resolution": (512, 768), "steps": 40, "num_frames": 121,
+    },
+    "Tongyi-MAI/Z-Image": {
+        "keeps": "z-image", "psrc": "t2i",
+        "resolution": (720, 1280), "steps": 50,
+    },
+    "Qwen/Qwen-Image-2512": {
+        "keeps": "qwen-image", "psrc": "t2i",
+        "resolution": (1328, 1328), "steps": 50,
+    },
+    "Qwen/Qwen-Image-Edit-2511": {
+        "keeps": "qwen-image", "psrc": "ti2i",
+        "resolution": (1328, 1328), "steps": 50,
+    },
+    "Alpha-VLLM/Lumina-Image-2.0": {
+        "keeps": "lumina-image", "psrc": "t2i",
+        "resolution": (1024, 1024), "steps": 50,
+    },
+    "zai-org/CogVideoX-2b": {
+        "keeps": "cogvideox", "psrc": "t2v",
+        "resolution": (480, 720), "steps": 50, "num_frames": 49,
+    },
+    "zai-org/CogVideoX-5b-I2V": {
+        "keeps": "cogvideox", "psrc": "i2v",
+        "resolution": (480, 720), "steps": 50, "num_frames": 49,
+    },
+    "Shitao/OmniGen-v1-diffusers": {
+        "keeps": "omnigen", "psrc": "ti2i",
+        "resolution": (1024, 1024), "steps": 50,
+    },
+    "stabilityai/stable-diffusion-xl-base-1.0": {
+        "keeps": "sdxl", "psrc": "t2i",
+        "resolution": (1024, 1024), "steps": 30,
+    },
+    "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS": {
+        "keeps": "pixart", "psrc": "t2i",
+        "resolution": (1024, 1024), "steps": 20,
+    },
 }
+
+
+def get_model_defaults(model_source: str) -> dict[str, Any]:
+    """Get all defaults for a known model, or empty dict for unknown models."""
+    return MODEL_DEFAULTS.get(model_source, {})
 
 
 def detect_default_keeps(model_source: str) -> str | None:
     """Auto-detect default keeps preset from HuggingFace model ID."""
-    return _MODEL_ID_TO_KEEPS.get(model_source)
-
-
-# Map HuggingFace model IDs to prompt sources
-_MODEL_ID_TO_PROMPT_SOURCE: dict[str, str] = {
-    "Wan-AI/Wan2.2-I2V-A14B-Diffusers": "i2v",
-    "Wan-AI/Wan2.2-T2V-A14B-Diffusers": "t2v",
-    "black-forest-labs/FLUX.2-dev": "t2i",
-    "black-forest-labs/FLUX.1-Krea-dev": "t2i",
-    "Lightricks/LTX-2": "t2v",
-    "Tongyi-MAI/Z-Image": "t2i",
-    "Qwen/Qwen-Image-2512": "t2i",
-    "Qwen/Qwen-Image-Edit-2511": "ti2i",
-    "Alpha-VLLM/Lumina-Image-2.0": "t2i",
-    "zai-org/CogVideoX-2b": "t2v",
-    "zai-org/CogVideoX-5b-I2V": "i2v",
-    "Shitao/OmniGen-v1-diffusers": "ti2i",
-}
+    return MODEL_DEFAULTS.get(model_source, {}).get("keeps")
 
 
 def detect_prompt_source(model_source: str) -> str | None:
     """Auto-detect prompt source from HuggingFace model ID."""
-    return _MODEL_ID_TO_PROMPT_SOURCE.get(model_source)
+    return MODEL_DEFAULTS.get(model_source, {}).get("psrc")
 
 
 @dataclass
@@ -155,6 +208,7 @@ class QuantConfig:
     calib_size: int = 256  # number of calibration prompts to use
     calib_steps: int = 30  # number of inference steps per prompt
     calib_resolution: tuple[int, int] = (480, 848)  # (height, width) for calibration
+    num_frames: int | None = None  # video models: frames per generation (auto-detected)
     calib_prompts: list[str] | None = None  # custom prompts (default: HF dataset)
 
     # Prompt source: t2i, t2v, i2v (auto-detected for known model IDs)

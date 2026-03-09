@@ -16,6 +16,12 @@ pip install torch --index-url https://download.pytorch.org/whl/cu130
 pip install kuantala
 ```
 
+**Blackwell GPUs:** The stable PyTorch release may have CUBLAS errors on Blackwell. If you hit `CUBLAS_STATUS_INVALID_VALUE`, install a nightly build instead:
+
+```bash
+pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu130
+```
+
 Kuantala requires models in **diffusers format** (with `model_index.json`). If a model has both a raw and a diffusers variant on HuggingFace, use the diffusers one (typically suffixed with `-Diffusers`).
 
 ## Quick Start
@@ -53,7 +59,7 @@ kuantala tensors ./output/transformer-FP8.safetensors
 
 Kuantala uses NVIDIA Model Optimizer to quantize model components:
 
-1. **Load** the full diffusers pipeline (transformer, text encoder, VAE, etc.) on CUDA
+1. **Load** the full diffusers pipeline (transformer, text encoder, VAE, etc.) in BF16 on CUDA
 2. **Quantize** with Model Optimizer — inserts quantizer nodes and runs calibration by executing the pipeline with prompts from HuggingFace datasets (see [Prompt Sources](#prompt-sources)), producing realistic activations for optimal scale factor estimation
 3. **Compress** — converts fake-quantized weights to real low-precision (FP8 or packed FP4)
 4. **Save** as safetensors with actual quantized weights
@@ -279,6 +285,8 @@ For known HuggingFace model IDs, kuantala automatically applies preset keep patt
 | `omnigen` | OmniGen-v1 | patch_embedding, time_token, t_embedder, embed_tokens, norm_out, proj_out, first/last 3 layers |
 | `z-image` | Z-Image | t_embedder, cap_embedder, all_x_embedder, all_final_layer, first/last 3 layers |
 | `qwen-image` | Qwen-Image-2512, Qwen-Image-Edit-2511 | time_text_embed, img_in, txt_in, txt_norm, norm_out, proj_out, first/last 3 transformer_blocks |
+| `sdxl` | SDXL 1.0 | time_emb_proj, time_embedding, conv_in, conv_out, conv_shortcut, add_embedding, pos_embed |
+| `pixart` | PixArt-Sigma | time_emb_proj, time_embedding, pos_embed, x_embedder, norm_out |
 
 Use `--use-default-keeps <preset>` to explicitly select a preset (e.g. for local paths). Use `--no-default-keeps` to disable auto-detection.
 
@@ -315,6 +323,12 @@ kuantala quantize zai-org/CogVideoX-5b-I2V --dtype FP8
 
 # OmniGen-v1
 kuantala quantize Shitao/OmniGen-v1-diffusers --dtype FP8
+
+# SDXL 1.0 (UNet, ~7 GB total)
+kuantala quantize stabilityai/stable-diffusion-xl-base-1.0 --dtype FP8
+
+# PixArt-Sigma (transformer, ~11 GB total)
+kuantala quantize PixArt-alpha/PixArt-Sigma-XL-2-1024-MS --dtype FP8
 ```
 
 Norms (`FP32LayerNorm`, `RMSNorm`) and embeddings (`WanRotaryPosEmbed`) are already kept at original precision by Model Optimizer.

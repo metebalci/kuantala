@@ -182,7 +182,7 @@ def _load_model(component: ModelComponent) -> torch.nn.Module:
 
     # diffusers uses torch_dtype, transformers uses dtype
     dtype_kwarg = "dtype" if component.library == "transformers" else "torch_dtype"
-    model = cls.from_pretrained(str(component.path), **{dtype_kwarg: torch.float16})
+    model = cls.from_pretrained(str(component.path), **{dtype_kwarg: torch.bfloat16})
     model = model.cuda()
     log.info("Loaded %s.%s on CUDA", component.library, component.class_name)
     return model
@@ -193,15 +193,15 @@ def _load_pipeline(model_dir: Path) -> Any:
     from diffusers import DiffusionPipeline
 
     log.info("Loading pipeline from %s...", model_dir)
-    pipe = DiffusionPipeline.from_pretrained(str(model_dir), torch_dtype=torch.float16)
-    pipe.enable_model_cpu_offload()
-    log.info("Pipeline loaded with CPU offload")
+    pipe = DiffusionPipeline.from_pretrained(str(model_dir), torch_dtype=torch.bfloat16)
+    pipe.to("cuda")
+    log.info("Pipeline loaded on CUDA")
     return pipe
 
 
 def _build_pipeline_kwargs(
     pipe: Any, num_inference_steps: int = 30, resolution: tuple[int, int] = (256, 256),
-    has_dataset_images: bool = False,
+    has_dataset_images: bool = False, num_frames: int | None = None,
 ) -> dict[str, Any]:
     """Build kwargs for pipeline calibration calls based on its signature."""
     params = inspect.signature(pipe.__call__).parameters
@@ -219,7 +219,7 @@ def _build_pipeline_kwargs(
     if "width" in params:
         kwargs["width"] = width
     if "num_frames" in params:
-        kwargs["num_frames"] = 9  # satisfies (n-1)%4==0 for Wan
+        kwargs["num_frames"] = num_frames or 9
 
     # I2V models need a conditioning image — use random if no dataset images
     if "image" in params and not has_dataset_images:
@@ -237,9 +237,10 @@ def _build_pipeline_kwargs(
 def _make_pipeline_calibration_fn(
     pipe: Any, prompts: list[str], num_inference_steps: int = 30,
     resolution: tuple[int, int] = (256, 256), images: list[Any] | None = None,
+    num_frames: int | None = None,
 ) -> Any:
     """Create a calibration forward_loop that runs the full pipeline."""
-    kwargs = _build_pipeline_kwargs(pipe, num_inference_steps, resolution, has_dataset_images=images is not None)
+    kwargs = _build_pipeline_kwargs(pipe, num_inference_steps, resolution, has_dataset_images=images is not None, num_frames=num_frames)
 
     def forward_loop(model: Any) -> None:
         log.info("Running pipeline calibration with %d prompts...", len(prompts))
@@ -501,7 +502,8 @@ def quantize(config: QuantConfig) -> list[Path]:
         if len(prompts) < config.calib_size:
             log.warning("Only %d prompts available (requested %d)", len(prompts), config.calib_size)
         forward_loop = _make_pipeline_calibration_fn(
-            pipe, prompts, config.calib_steps, config.calib_resolution, images=images
+            pipe, prompts, config.calib_steps, config.calib_resolution, images=images,
+            num_frames=config.num_frames,
         )
 
         for component, dtype in pipeline_components:
@@ -542,6 +544,7 @@ def analyze(
     num_prompts: int,
     num_steps: int,
     resolution: tuple[int, int],
+    num_frames: int | None = None,
 ) -> dict:
     """Run auto_quantize to find optimal per-layer format selection.
 
@@ -581,7 +584,7 @@ def analyze(
     handle = transformer.register_forward_pre_hook(capture_hook, with_kwargs=True)
 
     prompts, _ = _load_prompts(num_prompts, "t2i")
-    pipe_kwargs = _build_pipeline_kwargs(pipe, num_steps, resolution)
+    pipe_kwargs = _build_pipeline_kwargs(pipe, num_steps, resolution, num_frames=num_frames)
 
     log.info("Capturing transformer inputs from %d pipeline runs (%d steps each)...", len(prompts), num_steps)
     with torch.no_grad():
@@ -721,7 +724,7 @@ def _load_quantized_component(
     cls = getattr(lib, class_name)
 
     dtype_kwarg = "dtype" if library == "transformers" else "torch_dtype"
-    model = cls.from_pretrained(str(component_path), **{dtype_kwarg: torch.float16})
+    model = cls.from_pretrained(str(component_path), **{dtype_kwarg: torch.bfloat16})
     model = model.cuda()
 
     saved_sd = load_file(str(quantized_file))
@@ -750,6 +753,7 @@ def evaluate(
     decode: bool = False,
     custom_prompts: list[str] | None = None,
     prompt_source: str | None = None,
+    num_frames: int | None = None,
 ) -> dict[str, Any]:
     """Compare original vs quantized pipeline outputs.
 
@@ -779,7 +783,8 @@ def evaluate(
     log.info("Loading original pipeline for reference outputs...")
     pipe = _load_pipeline(model_dir)
     pipe_kwargs = _build_pipeline_kwargs(
-        pipe, num_steps, resolution, has_dataset_images=dataset_images is not None
+        pipe, num_steps, resolution, has_dataset_images=dataset_images is not None,
+        num_frames=num_frames,
     )
 
     # If not decoding, force latent output
