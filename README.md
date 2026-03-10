@@ -303,9 +303,15 @@ Calibration and evaluation prompts are loaded from HuggingFace datasets. Use `--
 | `i2v` | [WenhaoWang/TIP-I2V](https://huggingface.co/datasets/WenhaoWang/TIP-I2V) | CC-BY-NC-4.0 | Image-to-video models (Wan I2V) |
 | `ti2i` | [UCSC-VLAA/HQ-Edit](https://huggingface.co/datasets/UCSC-VLAA/HQ-Edit) | CC-BY-NC-4.0 | Text+image-to-image models (Qwen-Image-Edit) |
 
-The first 10240 entries from each dataset are used for calibration, the second 10240 for evaluation. For I2V and TI2I sources, the dataset provides both text prompts and conditioning images.
+Calibration uses the first N entries from each dataset (default: 32), evaluation uses entries starting at offset 1024 to avoid overlap. For I2V and TI2I sources, the dataset provides both text prompts and conditioning images.
 
-Datasets are downloaded on demand from HuggingFace and cached locally by the `datasets` library. Custom prompts can be provided via `--prompts FILE` to override the default dataset.
+Datasets are downloaded on demand from HuggingFace and cached locally by the `datasets` library. Custom prompts can be provided via `--prompts FILE` (one prompt per line) to override the default dataset. For image-input models, append `image:/path/to/image.png` to the line:
+
+```
+a cat sitting on a table
+a dog running in a park image:/data/images/dog.jpg
+sunset over the ocean image:/data/images/sunset.png
+```
 
 ## Python API
 
@@ -325,13 +331,6 @@ config = QuantConfig(
 )
 output_files = quantize(config)
 ```
-
-## Supported Formats
-
-| Format | Description | Size vs FP16 | GPU Requirement |
-|--------|-------------|--------------|-----------------|
-| FP8 | 8-bit floating point (E4M3) | ~50% | Hopper+ (RTX 4000+) |
-| NVFP4 | NVIDIA 4-bit floating point | ~25% | Blackwell+ (RTX 5000+) |
 
 ## Development
 

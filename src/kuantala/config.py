@@ -225,6 +225,7 @@ class QuantConfig:
     num_frames: int | None = None  # video models: frames per generation (auto-detected)
     offload: str | None = None  # "model" (component-level) or "layers" (layer-level) CPU offload
     calib_prompts: list[str] | None = None  # custom prompts (default: HF dataset)
+    calib_images: list[str | None] | None = None  # custom images for i2v/ti2i (from prompts file)
 
     # Prompt source: t2i, t2v, i2v (auto-detected for known model IDs)
     prompt_source: str | None = None

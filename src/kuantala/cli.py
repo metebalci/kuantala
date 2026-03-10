@@ -15,6 +15,24 @@ from kuantala.utils import console, setup_logging
 _QUANTIZABLE_TYPES = {"transformer", "unet", "vae", "text_encoder", "image_encoder"}
 
 
+def _parse_prompts_file(path: Path) -> tuple[list[str], list[str | None] | None]:
+    """Parse a prompts file. Each line is a text prompt, optionally followed by image:/path."""
+    prompts = []
+    images = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if " image:" in line:
+            text, image_path = line.rsplit(" image:", 1)
+            prompts.append(text.strip())
+            images.append(image_path.strip())
+        else:
+            prompts.append(line)
+            images.append(None)
+    return prompts, images if any(images) else None
+
+
 @click.group()
 @click.option("-v", "--verbose", is_flag=True, help="Enable debug logging.")
 def cli(verbose: bool) -> None:
@@ -106,8 +124,9 @@ def quantize(
 
     # Load custom calibration prompts from file if provided
     prompt_list = None
+    image_list = None
     if prompts is not None:
-        prompt_list = [line.strip() for line in prompts.read_text().splitlines() if line.strip()]
+        prompt_list, image_list = _parse_prompts_file(prompts)
 
     config = QuantConfig(
         model_source=model,
@@ -124,6 +143,7 @@ def quantize(
         calib_steps=nsteps,
         calib_resolution=calib_resolution,
         calib_prompts=prompt_list,
+        calib_images=image_list,
         num_frames=defaults.get("num_frames"),
         offload=offload,
         prompt_source=psrc,

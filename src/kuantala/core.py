@@ -504,7 +504,12 @@ def quantize(config: QuantConfig) -> list[Path]:
 
         if config.calib_prompts:
             prompts = config.calib_prompts[:config.calib_size]
-            images = None
+            if config.calib_images:
+                from PIL import Image
+                raw_images = config.calib_images[:config.calib_size]
+                images = [Image.open(p) if p else None for p in raw_images]
+            else:
+                images = None
         else:
             source = config.prompt_source or detect_prompt_source(config.model_source) or "t2i"
             prompts, images = _load_prompts(config.calib_size, source)
