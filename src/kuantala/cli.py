@@ -70,7 +70,7 @@ def cli(verbose: bool) -> None:
 @click.option("--resolution", type=str, default=None,
               help="Calibration resolution: 480p, 540p, 720p, 1080p, 4k, or HEIGHTxWIDTH (default: auto or 480p).")
 @click.option("--psrc", type=click.Choice(PROMPT_SOURCES, case_sensitive=False), default=None,
-              help="Prompt source: t2i, t2v, i2v (auto-detected for known HF model IDs).")
+              help="Prompt source: t2i, t2v, i2v, ti2i (auto-detected for known HF model IDs).")
 @click.option("--offload", type=click.Choice(["model", "layers"], case_sensitive=False), default=None,
               help="CPU offload mode: 'model' (component-level) or 'layers' (layer-level, slower but less VRAM).")
 def quantize(
@@ -554,7 +554,7 @@ def convert(input_file: Path, output: Path | None, remap_keys: str | None) -> No
 @click.option("--decode", is_flag=True,
               help="Also compare decoded pixel-space outputs (default: latent only).")
 @click.option("--psrc", type=click.Choice(PROMPT_SOURCES, case_sensitive=False), default=None,
-              help="Prompt source: t2i, t2v, i2v (auto-detected for known HF model IDs).")
+              help="Prompt source: t2i, t2v, i2v, ti2i (auto-detected for known HF model IDs).")
 @click.option("--offset", type=int, default=1024,
               help="Dataset offset for eval prompts to avoid overlap with calibration (default: 1024).")
 @click.option("--offload", type=click.Choice(["model", "layers"], case_sensitive=False), default=None,
@@ -589,8 +589,9 @@ def eval_cmd(
     eval_resolution = _parse_resolution(resolution) if isinstance(resolution, str) else resolution or (480, 848)
 
     prompt_list = None
+    image_list = None
     if prompts is not None:
-        prompt_list = [line.strip() for line in prompts.read_text().splitlines() if line.strip()]
+        prompt_list, image_list = _parse_prompts_file(prompts)
 
     console.print(f"\n[bold]Model:[/] {model}")
     console.print(f"[bold]Quantized dir:[/] {quantized_dir}")
@@ -608,6 +609,7 @@ def eval_cmd(
         resolution=eval_resolution,
         decode=decode,
         custom_prompts=prompt_list,
+        custom_images=image_list,
         prompt_source=psrc,
         num_frames=defaults.get("num_frames"),
         offset=offset,

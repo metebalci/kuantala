@@ -655,6 +655,7 @@ def evaluate(
     resolution: tuple[int, int] = (480, 848),
     decode: bool = False,
     custom_prompts: list[str] | None = None,
+    custom_images: list[str | None] | None = None,
     prompt_source: str | None = None,
     num_frames: int | None = None,
     offset: int = 1024,
@@ -671,7 +672,12 @@ def evaluate(
     # Load prompts
     if custom_prompts:
         prompts = custom_prompts[:num_prompts]
-        dataset_images = None
+        if custom_images:
+            from PIL import Image
+            raw_images = custom_images[:num_prompts]
+            dataset_images = [Image.open(p) if p else None for p in raw_images]
+        else:
+            dataset_images = None
     else:
         source = prompt_source or detect_prompt_source(model_source) or "t2i"
         prompts, dataset_images = _load_prompts(num_prompts, source, for_eval=True, offset=offset)

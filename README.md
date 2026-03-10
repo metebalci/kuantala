@@ -112,6 +112,7 @@ kuantala components [OPTIONS] MODEL
 | Option | Description |
 |--------|-------------|
 | `MODEL` | HuggingFace diffusers model ID or local directory path (required) |
+| `--show-all` | Show all components, including non-quantizable ones |
 
 ### `kuantala config`
 
@@ -131,7 +132,7 @@ kuantala convert [OPTIONS] INPUT
 |--------|-------------|
 | `INPUT` | Path to a Model Optimizer NVFP4 `.safetensors` file (required) |
 | `-o, --output` | Output file path (default: `{input_stem}-comfyui.safetensors`) |
-| `--remap-keys` | Remap diffusers key names to original: `wan` |
+| `--remap-keys` | Remap key names: preset name (`wan`) or path to a file with `pattern replacement` lines |
 
 ### `kuantala eval`
 
@@ -148,8 +149,8 @@ Compares original vs quantized pipeline outputs using PSNR and SSIM metrics. Run
 | `-q, --quantized-dir` | Directory with quantized safetensors from `kuantala quantize` (required) |
 | `--prompts FILE` | File with eval prompts, one per line (default: HF dataset test split) |
 | `--nprompts N` | Number of eval prompts (default: 16) |
-| `--nsteps N` | Inference steps (default: 30) |
-| `--resolution` | Resolution: `480p`, `540p`, `720p`, `1080p`, `4k`, or `HEIGHTxWIDTH` (default: `480p`) |
+| `--nsteps N` | Inference steps (default: auto per model, fallback: 30) |
+| `--resolution` | Resolution: `480p`, `540p`, `720p`, `1080p`, `4k`, or `HEIGHTxWIDTH` (default: auto per model, fallback: `480p`) |
 | `--decode` | Also compare decoded pixel-space outputs (default: latent only) |
 | `--psrc` | Prompt source: `t2i`, `t2v`, `i2v`, `ti2i` (auto-detected for known HF model IDs) |
 | `--offset N` | Dataset offset for eval prompts to avoid overlap with calibration (default: 1024) |
@@ -191,12 +192,12 @@ kuantala quantize [OPTIONS] MODEL
 | `--cfg` | Quantization config preset: `default`, `awq_lite`, `awq_clip`, `awq_full` (default: `default`, see below) |
 | `--alpha-step` | Search step size for `awq_full` (default: 0.1, smaller = finer search, slower) |
 | `--keep PATTERN` | Disable quantization on layers matching this glob pattern (repeatable) |
-| `--use-default-keeps` | Apply preset keep patterns: `wan`, `flux`, `ltx`, `z-image`, `qwen-image` (auto-detected for known HF model IDs) |
+| `--use-default-keeps` | Apply preset keep patterns: `wan`, `flux`, `ltx`, `cogvideox`, `z-image`, `qwen-image`, `sdxl` (auto-detected for known HF model IDs) |
 | `--no-default-keeps` | Disable auto-detected default keep patterns |
 | `--prompts FILE` | File with calibration prompts, one per line (default: HF dataset) |
 | `--nprompts N` | Number of calibration prompts (default: 32) |
-| `--nsteps N` | Inference steps per calibration prompt (default: 30) |
-| `--resolution` | Calibration resolution: `480p`, `540p`, `720p`, `1080p`, `4k`, or `HEIGHTxWIDTH` (default: `480p`) |
+| `--nsteps N` | Inference steps per calibration prompt (default: auto per model, fallback: 30) |
+| `--resolution` | Calibration resolution: `480p`, `540p`, `720p`, `1080p`, `4k`, or `HEIGHTxWIDTH` (default: auto per model, fallback: `480p`) |
 | `--psrc` | Prompt source: `t2i`, `t2v`, `i2v`, `ti2i` (auto-detected for known HF model IDs) |
 | `--offload` | CPU offload mode: `model` (component-level) or `layers` (layer-level, slower but less VRAM) |
 
