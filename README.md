@@ -207,6 +207,7 @@ Quantization config presets (`--cfg`):
 - `awq_clip` — AWQ with clipping-based optimization. Good quality/speed tradeoff. NVFP4 only.
 - `awq_full` — AWQ with full search (lite + clip). Slowest, best quality. NVFP4 only. Use `--alpha-step` to control search granularity (default: 0.1).
 
+Approximate calibration speed relative to `default` (measured with Z-Image 6B on RTX Pro 6000): `awq_lite` and `awq_clip` are ~8x slower, `awq_full` is ~16x slower.
 
 ### `kuantala tensors`
 
