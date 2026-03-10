@@ -17,12 +17,6 @@ source .venv/bin/activate
 # First install PyTorch with CUDA from https://pytorch.org
 pip install torch --index-url https://download.pytorch.org/whl/cu130
 
-pip install kuantala
-```
-
-Alternatively, after installing PyTorch, you can install from source:
-
-```bash
 git clone https://github.com/metebalci/kuantala.git
 cd kuantala
 pip install -e .
