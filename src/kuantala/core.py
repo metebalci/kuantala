@@ -29,12 +29,6 @@ _MODELOPT_CONFIGS = {
     ("NVFP4", "awq_full"): mtq.NVFP4_AWQ_FULL_CFG,
 }
 
-# Configs for auto_quantize (AWQ_LITE recommended for NVFP4)
-_AUTO_QUANTIZE_CONFIGS = {
-    "FP8": mtq.FP8_DEFAULT_CFG,
-    "NVFP4": mtq.NVFP4_AWQ_LITE_CFG,
-}
-
 # Prompt datasets per source type.
 # Each entry: (hf_id, config_name, calib_split, eval_split, prompt_column, image_column)
 # First 10240 entries are used for calibration, second 10240 for eval.
@@ -552,126 +546,6 @@ def quantize(config: QuantConfig) -> list[Path]:
 
     return output_files
 
-
-def analyze(
-    model_source: str,
-    dtypes: list[str],
-    effective_bits: float,
-    num_prompts: int,
-    num_steps: int,
-    resolution: tuple[int, int],
-    num_frames: int | None = None,
-    offload: str | None = None,
-) -> dict:
-    """Run auto_quantize to find optimal per-layer format selection.
-
-    Loads the pipeline, captures transformer inputs, then runs modelopt's
-    auto_quantize to determine the best format per layer given an effective
-    bits constraint. Returns the auto_quantize state_dict.
-    """
-    model_dir = resolve_model_path(model_source)
-    pipe = _load_pipeline(model_dir, offload=offload)
-
-    # Find transformer/unet
-    transformer = None
-    comp_name = None
-    for name in ["transformer", "unet"]:
-        if hasattr(pipe, name) and getattr(pipe, name) is not None:
-            transformer = getattr(pipe, name)
-            comp_name = name
-            break
-    if transformer is None:
-        raise RuntimeError("No transformer or unet found in pipeline")
-
-    log.info("Analyzing component: %s", comp_name)
-
-    # Capture transformer inputs from pipeline runs (stored on CPU to save GPU memory)
-    captured_inputs: list[tuple[tuple, dict]] = []
-
-    def capture_hook(module: Any, args: tuple, kwargs: dict) -> None:
-        cpu_args = tuple(
-            a.detach().cpu() if isinstance(a, torch.Tensor) else a for a in args
-        )
-        cpu_kwargs = {
-            k: v.detach().cpu() if isinstance(v, torch.Tensor) else v
-            for k, v in kwargs.items()
-        }
-        captured_inputs.append((cpu_args, cpu_kwargs))
-
-    handle = transformer.register_forward_pre_hook(capture_hook, with_kwargs=True)
-
-    prompts, _ = _load_prompts(num_prompts, "t2i")
-    pipe_kwargs = _build_pipeline_kwargs(pipe, num_steps, resolution, num_frames=num_frames)
-
-    log.info("Capturing transformer inputs from %d pipeline runs (%d steps each)...", len(prompts), num_steps)
-    with torch.no_grad():
-        for i, prompt in enumerate(prompts):
-            log.info("  Pipeline run %d/%d", i + 1, len(prompts))
-            pipe(prompt=prompt, **pipe_kwargs)
-
-    handle.remove()
-    num_captured = len(captured_inputs)
-    log.info("Captured %d transformer forward passes", num_captured)
-
-    # Remove accelerate CPU offload hooks before auto_quantize — modelopt's
-    # calibration loop calls the model directly and doesn't trigger the hooks.
-    if offload:
-        from accelerate.hooks import remove_hook_from_submodules
-        remove_hook_from_submodules(transformer)
-        transformer.to("cuda")
-
-    # Build format list for auto_quantize
-    quant_formats = [_AUTO_QUANTIZE_CONFIGS[d] for d in dtypes if d in _AUTO_QUANTIZE_CONFIGS]
-    if not quant_formats:
-        raise RuntimeError(f"No valid quantization formats for: {dtypes}")
-
-    device = next(transformer.parameters()).device
-
-    def forward_step(model: Any, batch: Any) -> Any:
-        args, kwargs = batch
-        gpu_args = tuple(
-            a.to(device) if isinstance(a, torch.Tensor) else a for a in args
-        )
-        gpu_kwargs = {
-            k: v.to(device) if isinstance(v, torch.Tensor) else v
-            for k, v in kwargs.items()
-        }
-        return model(*gpu_args, **gpu_kwargs)
-
-    def loss_func(output: Any, batch: Any) -> torch.Tensor:
-        if hasattr(output, "sample"):
-            out = output.sample
-        elif isinstance(output, (tuple, list)):
-            out = output[0]
-        else:
-            out = output
-        return out.float().pow(2).mean()
-
-    saved_plugins = _disable_kv_cache_plugins()
-    try:
-        log.info(
-            "Running auto_quantize (formats=%s, effective_bits=%.1f, calib=%d, score=%d)...",
-            dtypes, effective_bits,
-            min(64, num_captured), min(32, num_captured),
-        )
-        _, state_dict = mtq.auto_quantize(
-            transformer,
-            constraints={"effective_bits": effective_bits},
-            quantization_formats=quant_formats,
-            data_loader=captured_inputs,
-            forward_step=forward_step,
-            loss_func=loss_func,
-            num_calib_steps=min(64, num_captured),
-            num_score_steps=min(32, num_captured),
-        )
-    finally:
-        _restore_kv_cache_plugins(saved_plugins)
-
-    del pipe, transformer, captured_inputs
-    torch.cuda.empty_cache()
-    gc.collect()
-
-    return state_dict
 
 
 # ---------------------------------------------------------------------------

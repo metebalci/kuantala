@@ -106,34 +106,6 @@ kuantala convert ./output-Wan-AI-Wan2.2-I2V-A14B-Diffusers/transformer-NVFP4.saf
 
 ## CLI Reference
 
-### `kuantala analyze`
-
-```
-kuantala analyze [OPTIONS] MODEL
-```
-
-Uses modelopt's `auto_quantize` to find the optimal quantization format per layer given an effective bits constraint. No output files are saved — this is for exploring what format each layer should use.
-
-> **Note:** `analyze` requires significantly more VRAM than `quantize` or `eval` because it computes gradients for sensitivity scoring. As a rough guide, expect ~3-4x the model size in VRAM.
-
-| Option | Description |
-|--------|-------------|
-| `MODEL` | HuggingFace diffusers model ID or local directory path (required) |
-| `-d, --dtypes` | Quantization formats to consider: `FP8`, `NVFP4` (repeatable, default: `NVFP4`) |
-| `--effective-bits` | Target average bits per parameter (default: `4.8`) |
-| `--nprompts N` | Number of pipeline runs to capture inputs (default: 8) |
-| `--nsteps N` | Inference steps per pipeline run (default: 10) |
-| `--resolution` | Calibration resolution: `480p`, `540p`, `720p`, `1080p`, `4k`, or `HEIGHTxWIDTH` (default: `480p`) |
-| `--offload` | CPU offload mode: `model` (component-level) or `layers` (layer-level, slower but less VRAM) |
-
-```bash
-# Analyze optimal format mix between FP8 and NVFP4
-kuantala analyze Wan-AI/Wan2.2-I2V-A14B-Diffusers -d FP8 -d NVFP4
-
-# Target higher quality (more bits)
-kuantala analyze Wan-AI/Wan2.2-I2V-A14B-Diffusers -d FP8 -d NVFP4 --effective-bits 6.0
-```
-
 ### `kuantala components`
 
 ```
