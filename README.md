@@ -20,6 +20,14 @@ pip install torch --index-url https://download.pytorch.org/whl/cu130
 pip install kuantala
 ```
 
+Alternatively, after installing PyTorch, you can install from source:
+
+```bash
+git clone https://github.com/metebalci/kuantala.git
+cd kuantala
+pip install -e .
+```
+
 Kuantala requires models in **diffusers format** (with `model_index.json`). If a model has both a raw and a diffusers variant on HuggingFace, use the diffusers one (typically suffixed with `-Diffusers`).
 
 ## Quick Start
