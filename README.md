@@ -48,9 +48,6 @@ kuantala components Wan-AI/Wan2.2-I2V-A14B-Diffusers
 # Show model architecture from config (no weights downloaded)
 kuantala config Wan-AI/Wan2.2-I2V-A14B-Diffusers
 
-# Estimate output sizes for all formats
-kuantala estimate Wan-AI/Wan2.2-I2V-A14B-Diffusers
-
 # Convert NVFP4 output to ComfyUI format
 kuantala convert ./output-wan/transformer-NVFP4.safetensors --remap-keys wan
 
@@ -135,14 +132,6 @@ kuantala convert [OPTIONS] INPUT
 | `INPUT` | Path to a Model Optimizer NVFP4 `.safetensors` file (required) |
 | `-o, --output` | Output file path (default: `{input_stem}-comfyui.safetensors`) |
 | `--remap-keys` | Remap diffusers key names to original: `wan` |
-
-### `kuantala estimate`
-
-```
-kuantala estimate MODEL
-```
-
-Estimates output sizes for all formats from parameter counts. No actual quantization is performed. VAE is excluded (skipped by default). The model must be downloaded locally.
 
 ### `kuantala eval`
 

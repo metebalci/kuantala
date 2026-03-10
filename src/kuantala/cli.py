@@ -382,66 +382,6 @@ def info() -> None:
     console.print(models_table)
 
 
-# Approximate bits per parameter for size estimation
-_BITS_PER_PARAM = {
-    "FP8": 8.5,
-    "NVFP4": 4.5,
-}
-
-
-@cli.command()
-@click.argument("model", metavar="MODEL_ID_OR_PATH")
-def estimate(model: str) -> None:
-    """Estimate output sizes for each quantization format.
-
-    Estimates are computed from parameter counts — no actual quantization
-    is performed. VAE is skipped (default behavior).
-
-    MODEL is a HuggingFace diffusers model ID or local directory path.
-    """
-    from kuantala.components import detect_components
-    from kuantala.model_loader import resolve_model_path
-
-    model_dir = resolve_model_path(model)
-    model_info = detect_components(model_dir)
-
-    total_params = 0
-    for comp in model_info.components:
-        if comp.component_type not in _QUANTIZABLE_TYPES - {"vae"}:
-            continue
-
-        sf_files = sorted(comp.path.glob("*.safetensors"))
-        for sf_path in sf_files:
-            header = _read_local_safetensors_header(sf_path)
-            total_params += _count_params_from_header(header)
-
-    if not total_params:
-        console.print("[yellow]No quantizable components found.[/]")
-        return
-
-    console.print(f"\n[bold]Model:[/] {model}")
-    console.print(f"[bold]Pipeline:[/] {model_info.model_type or 'unknown'}")
-    console.print(f"[bold]Total parameters (excl. VAE):[/] {_format_params(total_params)}")
-
-    def _fmt(b: float) -> str:
-        gb = b / (1024 ** 3)
-        if gb >= 1.0:
-            return f"{gb:.1f} GB"
-        return f"{b / (1024 ** 2):.0f} MB"
-
-    table = Table(title="Estimated Output Sizes", title_style="bold")
-    table.add_column("Format", style="")
-    table.add_column("Size", justify="right")
-    table.add_column("vs FP16", justify="right")
-
-    fp16_bytes = total_params * 16.0 / 8
-    for dtype in DTYPES:
-        bpp = _BITS_PER_PARAM.get(dtype, 16.0)
-        size_bytes = total_params * bpp / 8
-        pct = size_bytes / fp16_bytes * 100
-        table.add_row(dtype, _fmt(size_bytes), f"{pct:.0f}%")
-
-    console.print(table)
 
 
 @cli.command()
