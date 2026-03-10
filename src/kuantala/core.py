@@ -641,7 +641,7 @@ def analyze(
     def loss_func(output: Any, batch: Any) -> torch.Tensor:
         if hasattr(output, "sample"):
             out = output.sample
-        elif isinstance(output, tuple):
+        elif isinstance(output, (tuple, list)):
             out = output[0]
         else:
             out = output
