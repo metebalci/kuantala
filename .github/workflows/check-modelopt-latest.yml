@@ -1,0 +1,73 @@
+name: Check latest nvidia-modelopt
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Read pinned modelopt version
+        id: pinned
+        run: |
+          pinned=$(grep -oP 'nvidia-modelopt==\K[0-9]+\.[0-9]+\.[0-9]+' pyproject.toml)
+          echo "version=$pinned" >> "$GITHUB_OUTPUT"
+          echo "Pinned: $pinned"
+
+      - name: Get latest modelopt version
+        id: latest
+        run: |
+          latest=$(pip index versions nvidia-modelopt 2>/dev/null \
+            | grep -oP 'nvidia-modelopt \(\K[0-9]+\.[0-9]+\.[0-9]+')
+          echo "version=$latest" >> "$GITHUB_OUTPUT"
+          echo "Latest: $latest"
+
+      - name: Skip if already on latest
+        if: steps.pinned.outputs.version == steps.latest.outputs.version
+        run: echo "Already on latest (${{ steps.pinned.outputs.version }}); nothing to do."
+
+      - name: Install latest modelopt alongside kuantala
+        if: steps.pinned.outputs.version != steps.latest.outputs.version
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install "nvidia-modelopt==${{ steps.latest.outputs.version }}"
+          pip install --no-deps -e .
+          pip install click safetensors rich huggingface-hub datasets diffusers \
+                      sentencepiece pyarrow accelerate ftfy "transformers>=4.53,<5.0"
+
+      - name: Verify required mtq APIs still exist
+        if: steps.pinned.outputs.version != steps.latest.outputs.version
+        run: |
+          python - <<'EOF'
+          import modelopt.torch.quantization as mtq
+          required = [
+              "FP8_DEFAULT_CFG",
+              "NVFP4_DEFAULT_CFG",
+              "NVFP4_AWQ_LITE_CFG",
+              "NVFP4_AWQ_CLIP_CFG",
+              "NVFP4_AWQ_FULL_CFG",
+              "disable_quantizer",
+              "quantize",
+              "compress",
+          ]
+          missing = [n for n in required if not hasattr(mtq, n)]
+          if missing:
+              raise SystemExit(f"Missing mtq APIs in latest modelopt: {missing}")
+          print("All required mtq APIs present.")
+          EOF
+
+      - name: Smoke-test kuantala CLI imports
+        if: steps.pinned.outputs.version != steps.latest.outputs.version
+        run: kuantala --help
+
+      - name: Report
+        if: steps.pinned.outputs.version != steps.latest.outputs.version
+        run: |
+          echo "::notice::nvidia-modelopt ${{ steps.latest.outputs.version }} is compatible; consider bumping pin from ${{ steps.pinned.outputs.version }}."
